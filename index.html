@@ -525,6 +525,21 @@ details.more>.hint{margin-top:0.25rem}
 .al-bar span{white-space:nowrap}
 .al-bar .go{margin-left:auto;color:var(--fg3);font-weight:400}
 .b-st{color:var(--acc);font-weight:700}
+.c-mute{color:var(--fg3)}
+.rp-prog{margin:0.625rem 0 0;font-size:0.8125rem;color:var(--fg3)}
+.rp-prog>span:first-child{margin-right:0.5rem}
+.rp-prog b{font-family:var(--mono);font-size:0.9375rem}
+.rp-go{margin-top:0.25rem;color:var(--fg2)}
+.rp-diff{margin-top:0.625rem}
+.rp-moved{font-size:0.8125rem;line-height:1.7;color:var(--fg2);margin:0.25rem 0 0.5rem}
+.df{font-size:0.8125rem;line-height:1.7;border-top:1px solid var(--edge);padding-top:0.375rem}
+.df-l{padding:0 0.375rem;color:var(--fg3);white-space:pre-wrap;overflow-wrap:anywhere}
+.df-add{background:var(--ok-d);color:var(--fg);box-shadow:inset 3px 0 var(--ok)}
+.df-del{background:var(--no-d);color:var(--fg4);text-decoration:line-through;box-shadow:inset 3px 0 var(--no)}
+.df-mod{color:var(--fg);box-shadow:inset 3px 0 var(--sb)}
+.df-chg{background:rgba(240,166,58,.35);color:#FFE2B0;border-radius:2px;padding:0 1px}
+.df-was{color:var(--fg4);font-size:0.75em;margin-left:0.25rem}
+.df-k{display:inline-block;padding:0 0.375rem;margin-left:0.375rem;border-radius:2px;font-size:0.6875rem}
 .b-thz{color:var(--thz);font-weight:700}
 .chk-card>b{color:var(--sb);font-size:0.9375rem}
 .chk-card p{margin:0.4375rem 0 0;font-size:0.8125rem;line-height:1.6;color:var(--fg2)}
@@ -1299,6 +1314,8 @@ details.more>.hint{margin-top:0.25rem}
     <button class="btn" id="markSent">標記已回報</button>
     <button class="btn" id="regen">重新產生</button>
   </div>
+  <!-- 跟上次回報比（按「標記已回報」時存的那份）：改到的地方上色；復機進度與可評估復機 -->
+  <div id="rpDiff"></div>
   <div id="rpEvents"></div>
   <!-- 使用者：回報稿跟貼上比對同一頁——上面是我的回報稿（目前站臺匯出），下面貼群組最新訊息比對、套用後上面跟著改 -->
   <div id="impBody" style="margin-top:1.25rem"></div>
@@ -1870,7 +1887,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v83';
+const APP_VER = 'v84';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -9001,6 +9018,86 @@ function generate() {
   }
   $('#out').value = txt;
   renderRpEvents();
+  renderRpDiff(txt);
+}
+
+/* ── 跟上次回報比（使用者：要不要比、怎麼比,改到的地方用顏色分出來）──────────────
+   「標記已回報」時把當時送出的回報稿（含手改過的字）與各站狀態存成 DB.sent；之後每次產生都拿來比：
+   整行新增綠、整行刪掉紅色刪除線、同一行只改一部分（時間、狀態）就只把改到的字標黃,旁邊附原本的字。
+   比對時忽略項次編號——前面多一站,後面每一行的「2.」「3.」都會變,那不是內容改了。 */
+const lineKey = l => String(l).replace(/^\s*(?:\d+|[一二三四五六七八九十]+)\s*[.、．]\s*/, '').trim();
+function diffLines(a, b) {
+  const A = a.map(lineKey), B = b.map(lineKey), n = A.length, m = B.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const ops = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { ops.push(['=', b[j]]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) ops.push(['-', a[i++]]);
+    else ops.push(['+', b[j++]]);
+  }
+  while (i < n) ops.push(['-', a[i++]]);
+  while (j < m) ops.push(['+', b[j++]]);
+  /* 每一行新增去找開頭最像的那行刪掉（同一站、同一個標題）,配上就當成「這一行改了」,只標改到的字。
+     整份一起找：站從「尚未開機」段移到「待機」段時,刪掉的那行跟新增的那行中間隔著沒變的行,只配緊鄰的配不到。
+     顯示順序不變：改過的行放在新的位置,被配走的刪除行不另外列。 */
+  const dels = ops.filter(o => o[0] === '-').map(o => ({ o, used: false }));
+  const pair = new Map();
+  ops.filter(o => o[0] === '+').forEach(o => {
+    let best = null, bl = 2;
+    for (const d of dels) { const L = !d.used && commonHead(lineKey(d.o[1]), lineKey(o[1])); if (L > bl) { bl = L; best = d; } }
+    if (best) { best.used = true; pair.set(o, best.o[1]); }
+  });
+  const used = new Set(dels.filter(d => d.used).map(d => d.o));
+  const out = [];
+  for (const o of ops) {
+    if (o[0] === '-' && used.has(o)) continue;
+    out.push(o[0] === '+' && pair.has(o) ? ['~', o[1], pair.get(o)] : o);
+  }
+  return out;
+}
+const commonHead = (a, b) => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; };
+function inlineDiff(nwLine, oldLine) {
+  // 項次編號不算改（前面多一站,後面每一行的編號都會變）：編號照新的寫,只比後面的內容
+  const nw = lineKey(nwLine), old = lineKey(oldLine), pre = nwLine.slice(0, Math.max(0, nwLine.indexOf(nw)));
+  let p = 0; while (p < nw.length && p < old.length && nw[p] === old[p]) p++;
+  let q = 0; while (q < nw.length - p && q < old.length - p && nw[nw.length - 1 - q] === old[old.length - 1 - q]) q++;
+  const mid = nw.slice(p, nw.length - q), was = old.slice(p, old.length - q);
+  return esc(pre) + esc(nw.slice(0, p)) + (mid ? `<mark class="df-chg">${esc(mid)}</mark>` : '')
+    + (was ? `<del class="df-was">${esc(was)}</del>` : '') + esc(nw.slice(nw.length - q));
+}
+function renderRpDiff(txt) {
+  const box = document.getElementById('rpDiff');
+  if (!box) return;
+  const live = DB.stations.filter(x => IS_LIVE(x) && inReport(x));
+  const n = { on: 0, standby: 0, off: 0 }; live.forEach(x => { if (n[x.status] != null) n[x.status]++; });
+  // 可評估復機：待機／關機中、陣風與濕度都已低於門檻的站（跟站臺卡的建議同一套）
+  const imp = impactMap(), go = live.filter(x => x.status !== 'on' && (advise(x, imp[x.id], DB.cfg) || {}).k === 'go');
+  const prog = `<div class="rp-prog"><span>復機進度</span><b class="c-ok">${n.on}</b> / ${live.length} 開機${n.standby ? `<span class="c-sb">・待機 ${n.standby}</span>` : ''}${
+    n.off ? `<span class="c-no">・關機 ${n.off}</span>` : ''}${go.length ? `<div class="rp-go">可評估復機：${go.map(x => `<span class="stn">${esc(x.name)}</span>`).join('、')}
+      <button type="button" class="act" onclick="go('eq');setSub('eq','imp')">看預判 ›</button></div>` : ''}</div>`;
+  const S = DB.sent;
+  if (!S || !S.text) {
+    box.innerHTML = prog + '<p class="hint" style="margin:0.5rem 0 0">送出後按「標記已回報」，下次這裡會標出跟上次回報比改了哪裡。</p>';
+    return;
+  }
+  const ops = diffLines(String(S.text).split('\n'), String(txt).split('\n'));
+  const c = { '+': 0, '-': 0, '~': 0 }; ops.forEach(o => { if (c[o[0]] != null) c[o[0]]++; });
+  // 站臺狀態有變的（上次回報 → 現在）
+  const moved = live.filter(x => S.st && S.st[x.id] && (S.st[x.id].status !== x.status || S.st[x.id].at !== x.at))
+    .map(x => `<span class="stn">${esc(x.name)}</span> ${S_LABEL[S.st[x.id].status] || ''} → <b style="color:${S_COL[x.status]}">${S_LABEL[x.status]}</b> ${fmtShort(x.at).replace(/\(.\)/, '')}`);
+  const same = !c['+'] && !c['-'] && !c['~'];
+  const lines = ops.map(([k, a, b]) => k === '=' ? `<div class="df-l">${esc(a) || '&nbsp;'}</div>`
+    : k === '+' ? `<div class="df-l df-add">${esc(a)}</div>`
+    : k === '-' ? `<div class="df-l df-del">${esc(a)}</div>`
+    : `<div class="df-l df-mod">${inlineDiff(a, b)}</div>`).join('');
+  box.innerHTML = prog + `<details class="card pad fold dif-fold rp-diff"${same ? '' : ' open'}><summary>跟上次回報比<span class="fold-s">${
+    same ? '一模一樣，不用再發' : `改 ${c['~']}・新增 ${c['+']}・刪掉 ${c['-']}`}</span></summary>
+    <p class="hint" style="margin:0.375rem 0">上次回報：${fmtShort(S.at)}　<span class="df-add df-k">新增</span><span class="df-mod df-k"><mark class="df-chg">改到的字</mark></span><span class="df-del df-k">刪掉</span></p>
+    ${moved.length ? `<div class="rp-moved">站臺有變：${moved.join('；')}</div>` : ''}
+    <div class="df">${lines}</div>
+    ${S.since && DB.since > S.at - 60000 && c['-'] ? '<p class="hint" style="margin:0.5rem 0 0">「已復機」裡上次報過的站，起算時間推進後就不再列，所以會顯示成刪掉。</p>' : ''}</details>`;
 }
 
 /* ── 群組回報彙整（萬用判讀）────────────────────────────────
@@ -9824,12 +9921,15 @@ document.getElementById('rpEvents').addEventListener('click', e => {
 function cmpHtml(D, T) {
   if (!D.cmp) return D.rows.length ? '<p class="hint" style="margin:0 0 0.75rem">這是第一份貼上。下一次貼上會列出新增、有變、這次沒出現的站。</p>' : '';
   const { add, chg, gone } = D.cmp;
+  // 復機後段大家只報「最新有變的那幾站」：不是完整名冊（roster）時,上次有、這次沒寫不代表出事,收起來不放紅字
+  const quiet = !D.roster;
   const li = (name, txt) => `<div class="dif-s"><b>${esc(name)}</b><small>${txt}</small></div>`;
   return `<details class="card pad fold dif-fold cmp" open><summary>跟上次貼上比<span class="fold-s">新增 ${add.length}・有變 ${chg.length}・沒出現 ${gone.length}</span></summary>
     <p class="hint" style="margin-top:0.375rem">上次貼上：${T(D.prevAt)}</p>
     ${add.map(r => li(r.name, `<b class="c-ok">新增</b>　${S_LABEL[r.status]}　${T(r.at)}`)).join('')}
     ${chg.map(r => li(r.name, `<b class="c-sb">有變</b>　${S_LABEL[r.was.status]} ${T(r.was.at)} → <b>${S_LABEL[r.status]} ${T(r.at)}</b>`)).join('')}
-    ${gone.map(p => li(p.name, `<b class="c-no">這次沒出現</b>　上次：${S_LABEL[p.status] || ''}　${T(p.at)}`)).join('')}
+    ${quiet && gone.length ? `<p class="hint" style="margin:0.375rem 0 0">這份只寫了有變的站，沒出現的 ${gone.length} 站照上次的狀態，不一定是漏報。</p>` : ''}
+    ${gone.map(p => li(p.name, `<b class="${quiet ? 'c-mute' : 'c-no'}">這次沒出現</b>${quiet ? '（照上次狀態）' : ''}　上次：${S_LABEL[p.status] || ''}　${T(p.at)}`)).join('')}
     ${add.length + chg.length + gone.length ? '' : '<div class="dif-s"><small>跟上次一模一樣</small></div>'}</details>`;
 }
 // 判讀成功的資料：每一句讀成什麼,附原句；點一筆可以改
@@ -11270,8 +11370,11 @@ $('#tyName').addEventListener('input', () => {
 $('#since').addEventListener('change', () => { DB.since = fromInput($('#since').value); save(); generate(); });
 $('#regen').onclick = () => { generate(); toast('已依目前站臺狀態重新產生'); };
 $('#markSent').onclick = () => {
+  // 先存「這次送出去的」（含手改過的字）與各站狀態,下次產生時拿來比
+  DB.sent = { at: Date.now(), text: $('#out').value, tpl: DB.tpl, since: 1,
+    st: Object.fromEntries(DB.stations.map(x => [x.id, { status: x.status, at: x.at }])) };
   DB.since = Date.now(); $('#since').value = toInput(DB.since); save(); generate();
-  toast('起算時間已推進到現在');
+  toast('已記下這次回報；起算時間推進到現在');
 };
 $('#copyOut').onclick = async () => {
   try { await navigator.clipboard.writeText($('#out').value); toast('全文已複製'); }

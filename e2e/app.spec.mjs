@@ -2307,3 +2307,44 @@ test('播報稿：有颱風時開頭加「即時告警」一段；站名、打�
   expect(r.thz).toBe('大雷雨特報');
   expect(errors).toEqual([]);
 });
+
+test('回報稿跟上次回報比：標記已回報時存下送出的那份；之後整行新增綠、刪掉紅、只改一部分標黃；站臺有變列出來；一樣就說不用再發', async ({ page }) => {
+  const H = 3600000, now = Date.now();
+  const S = (id, name, status, at) => ({ ...NEAR, id, name, status, at, lat: 25 + id.length * 0.01, lng: 121.5 });
+  const errors = await bootWith(page, [S('a', '甲站', 'on', now - 30 * H), S('bb', '乙站', 'off', now - 5 * H), S('ccc', '丙站', 'standby', now - 4 * H)]);
+  await page.locator('.nav button[data-p="rp"]').click();
+  await page.locator('#tplSeg button[data-t="B"]').click();
+  await expect(page.locator('#rpDiff .rp-prog')).toContainText('復機進度1 / 3 開機・待機 1・關機 1');
+  await expect(page.locator('#rpDiff')).toContainText('按「標記已回報」，下次這裡會標出');
+  await page.locator('#markSent').click();
+  expect(await page.evaluate(() => [!!DB.sent.text, DB.sent.st.bb.status])).toEqual([true, 'off']);
+  await expect(page.locator('#rpDiff .rp-diff summary')).toContainText('一模一樣，不用再發');
+  // 乙站從關機改待機
+  await page.evaluate(() => { const s = DB.stations[1]; s.status = 'standby'; s.at = Date.now() - 600000; save(); generate(); });
+  const d = page.locator('#rpDiff .rp-diff');
+  await expect(d).toHaveAttribute('open', '');
+  await expect(d.locator('summary')).toContainText('改 2・新增 0・刪掉 1');
+  await expect(d.locator('.rp-moved')).toContainText('乙站 關機 → 待機');
+  const mod = d.locator('.df .df-mod');
+  await expect(mod.nth(0).locator('mark.df-chg')).toHaveText('2');                // 「待機站臺計1處」→「計2處」只標數字
+  await expect(mod.nth(0).locator('del.df-was')).toHaveText('1');
+  await expect(mod.nth(1)).toContainText('2.乙站於');                               // 編號照新的，不算改
+  await expect(mod.nth(1).locator('mark.df-chg')).toContainText('實施待');          // 「機。」前後一樣，不標
+  await expect(mod.nth(1).locator('del.df-was')).toContainText('完成關');
+  await expect(d.locator('.df .df-del')).toHaveText(['一、尚未開機岸際雷達計1處：']);     // 尚未開機那一段整段不見
+  expect(errors).toEqual([]);
+});
+
+test('貼上比對：復機後段的訊息只寫有變的站——上次有、這次沒寫的不標紅，只提一句照上次狀態', async ({ page }) => {
+  const errors = await bootWith(page, [{ ...NEAR, id: 'a', name: '甲站' }, { ...NEAR, id: 'b', name: '乙站' }]);
+  await page.locator('.nav button[data-p="rp"]').click();
+  await page.locator('#impText').fill('甲站0830關機\n乙站0835待機');
+  await page.locator('#impGo').click();
+  await page.locator('#impText').fill('乙站0900恢復開機');
+  await page.locator('#impGo').click();
+  const cmp = page.locator('.cmp');
+  await expect(cmp).toContainText('這份只寫了有變的站，沒出現的 1 站照上次的狀態');
+  await expect(cmp.locator('.dif-s', { hasText: '甲站' })).toContainText('這次沒出現（照上次狀態）');
+  await expect(cmp.locator('.c-no')).toHaveCount(0);                                   // 不標紅
+  expect(errors).toEqual([]);
+});
