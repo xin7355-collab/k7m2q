@@ -73,6 +73,8 @@
   第一步 `scripts/fetch_gate.py` 決定要不要抓：有颱風、特報、落雷每輪抓，沒事 30 分鐘一次，上次抓的時間用 actions/cache 帶）、
   `scripts/fetch_dgpa.py`（同一個 cwa.yml 一起跑，人事行政總處停班停課頁切成 `data/dgpa.json`，前端即時轉發抓不到時的退路）、
   `scripts/fetch_wx.py`（同一個 cwa.yml，雨量＋陣風＋豪大雨雷雨特報＋縣市預報寫 `data/wx.json`，沒填個人授權碼的同事靠它看雨量陣風預報、出門建議與站臺豪雨紀錄）、
+  `scripts/fetch_ens.py`（同一個 cwa.yml，Weather Lab 的 AI 系集颱風路徑換算成臺灣周邊 8／10 級風機率格網 `data/ens.json`；
+  即時資料條款不准公開轉存原始路徑——只放推不回原始資料的推算結果，畫面要顯示 Weather Lab 與條款指定的 © 聲明；不進待機建議）、
   `scripts/build_tyhist.py` + `.github/workflows/tyhist.yml`（每週從 IBTrACS 建 `data/tyhist.json`，名牌的「今年／歷史第幾強」）、
   `assets/coast.json`（戰情圖離線海岸線，`python3 scripts/build_coast.py build` 重產）、
   `e2e/`（Playwright 測試，`npm test`）。每輪做了什麼寫在 commit 內文（`git log`），不另放紀錄檔。

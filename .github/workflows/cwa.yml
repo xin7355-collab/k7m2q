@@ -1,6 +1,6 @@
 # 氣象署資料的後端管線：落雷（data/lightning.json）＋颱風路徑與警報單（data/typhoon.json）
 # ＋人事行政總處停班停課公告（data/dgpa.json，官方頁沒有 CORS、前端的第三方代理會掛，後端直接抓）
-# ＋雨量站、測站陣風、豪大雨雷雨特報（data/wx.json）。
+# ＋雨量站、測站陣風、豪大雨雷雨特報（data/wx.json）＋AI 系集 8／10 級風機率（data/ens.json）。
 #
 # 兩支放同一個工作流程、同一個 commit：分開兩支的話會同時推同一條分支，
 # 後推的那支會因為不是 fast-forward 被拒，資料就白抓了。
@@ -81,6 +81,7 @@ jobs:
           python scripts/fetch_dgpa.py selftest
           python scripts/fetch_wx.py selftest
           python scripts/fetch_gate.py selftest
+          python scripts/fetch_ens.py selftest
 
       - name: Fetch
         if: steps.gate.outputs.run == '1'
@@ -108,6 +109,12 @@ jobs:
       - name: Fetch DGPA
         if: always() && steps.gate.outputs.run == '1'
         run: python scripts/fetch_dgpa.py
+
+      # AI 系集颱風（Weather Lab）→ data/ens.json：只寫推算出的 8／10 級風機率格網，原始路徑不落地（條款不准公開轉存）。
+      # 一天只出 4 報、約晚 6 小時；手上已是最新就一個請求都不送。抓到卻看不懂才紅燈
+      - name: Fetch AI ensemble
+        if: always() && steps.gate.outputs.run == '1'
+        run: python scripts/fetch_ens.py
 
       # 內容沒變就不要 commit —— 沒有雷的日子不該每十分鐘產生一次提交，
       # 每一次提交都會觸發一輪 Pages 重新部署。

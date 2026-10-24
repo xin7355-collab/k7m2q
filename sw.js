@@ -9,7 +9,7 @@
  * 這裡刻意不做 retry:Service Worker 只是轉手,重試由頁面端的 getJSON 負責
  * （429／5xx 退避）。兩層都重試的話,一次失敗會被放大成好幾倍的請求。
  */
-const CACHE = 'galepost-v84';
+const CACHE = 'galepost-v85';
 const SHELL = [
   './',
   './index.html',
@@ -84,9 +84,10 @@ self.addEventListener('fetch', e => {
      落雷拿到舊的很危險,但畫面上是用檔案裡的 updated 算資料年齡的,
      所以就算讀到快取,「幾分鐘前」仍然是誠實的。
      停班停課的後端檔也是:走下面「快取優先」的話,按「更新」拿到的永遠是上一份,
-     使用者看到的就是「更新壞掉了」。畫面上標的是檔案裡的抓取時間,讀到快取也看得出多舊。 */
+     使用者看到的就是「更新壞掉了」。畫面上標的是檔案裡的抓取時間,讀到快取也看得出多舊。
+     AI 系集（ens）也一樣：畫面標的是起報時間與「已 N 小時」。 */
   if (url.origin === location.origin
-      && /\/data\/(typhoon|lightning|dgpa|wx)\.json$/.test(url.pathname)) {
+      && /\/data\/(typhoon|lightning|dgpa|wx|ens)\.json$/.test(url.pathname)) {
     e.respondWith(
       fetch(req)
         .then(res => {

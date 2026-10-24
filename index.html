@@ -39,6 +39,7 @@
   --mag:#E070C8;
   /* 打雷：雨量色階已經用掉黃、橘、紅、紫紅，雷用電紫，兩種告警一眼分得開 */
   --thz:#B98CFF; --thz-d:rgba(185,140,255,.14);
+  --ai:#E070C8; --ai-d:rgba(224,112,200,.14);
   /* 自用監看（不列入回報）的類別自己一個顏色。
      不能沿用開機／待機／關機那三色 —— 那三色講的是管制狀態,
      這裡要講的是「這一臺不在交接名冊上」,是另一件事。 */
@@ -616,6 +617,29 @@ details.more>.hint{margin-top:0.25rem}
 .out-pd .pd-x span{color:var(--fg4)}
 .out-why{margin:0 0 0.25rem}
 .imp-sum{margin:-0.25rem 0 0.5rem;font-size:0.875rem;color:var(--fg2)}
+/* AI 系集（實驗）：洋紅一系，跟官方（青→紅）、本機推估分開 */
+.ai-x{font:700 0.625rem var(--sans);color:var(--ai);border:1px solid var(--ai);border-radius:var(--r3);padding:0 0.25rem;vertical-align:middle}
+.ai-card{border-color:rgba(224,112,200,.35);margin-bottom:0.875rem}
+.ai-meta{margin:0 0 0.375rem;font-size:0.75rem;color:var(--fg3);line-height:1.5}
+.ai-meta b{color:var(--fg2)}
+.ai-old{color:var(--sb);font-weight:700}
+.ai-none{margin:0.25rem 0;font-size:0.875rem;color:var(--fg2)}
+.ai-diff{margin-top:0.25rem;font-size:0.75rem;color:var(--ai);font-weight:700}
+.ai-list{display:flex;flex-direction:column;gap:0.375rem}
+.ai-row{border:1px solid var(--edge);border-radius:var(--r);padding:0.4375rem 0.5625rem;background:var(--surf)}
+.ai-row.diff{border-color:rgba(224,112,200,.55)}
+.ai-h{display:flex;align-items:center;justify-content:space-between;gap:0.5rem}
+.ai-h .nm{font-size:0.9375rem;color:var(--fg)}
+.ai-p{flex:none;min-width:6.5rem;text-align:right;padding:0.125rem 0.375rem;border-radius:var(--r3);font:0.75rem var(--mono);color:var(--fg3);
+  background:linear-gradient(90deg,var(--ai-d) var(--v),transparent var(--v));box-shadow:inset 0 0 0 1px rgba(224,112,200,.3)}
+.ai-p b{color:var(--ai);font-size:0.875rem}
+.ai-l{margin-top:0.1875rem;font:0.75rem var(--mono);color:var(--fg2);line-height:1.45}
+.ai-l b{color:var(--ai)}
+.ai-l em{font:700 0.625rem var(--sans);font-style:normal;color:var(--ai);margin-right:0.375rem}
+.ai-l.loc{color:var(--fg3)}.ai-l.loc em{color:var(--fg3)}
+.ai-cite{margin:0.5rem 0 0;font-size:0.625rem;line-height:1.45;color:var(--fg4);word-break:break-word}
+.ai-cite a{color:var(--fg3)}
+.ai-tag{color:var(--ai);white-space:nowrap;cursor:pointer}
 .impact tr.imp-bad td{background:var(--no-d)}
 .imp-ok{font-size:0.6875rem;color:var(--ok)}
 .imp-no{font-size:0.6875rem;color:var(--no);font-weight:700}
@@ -1887,7 +1911,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v84';
+const APP_VER = 'v85';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -3925,6 +3949,7 @@ async function loadTyphoon(manual) {
   renderTyphoon({ loading: true });
   // 公告來源跟颱風資料一起更新。沒設定就是 no-op,不會多送任何請求。
   fetchDgpa(false);
+  fetchEns();                       // AI 系集（實驗）：同源靜態檔，跟颱風路徑互不等待
   const key = (DB.cfg.cwaKey || '').trim();
   let note = '';
   // 實測觀測跟颱風路徑是兩件事:就算氣象署現在沒有任何颱風,
@@ -4333,6 +4358,9 @@ function stationCard(s, imp, i, total) {
     const ln = LTN_AT ? strikesNear(s, ltnRadius()) : null, tz = thunderFor(s);
     if (ln && ln.cg) meta.push(`<b style="color:var(--thz);white-space:nowrap">⚡ ${ltnRadius()} km 內落雷 ${ln.cg} 次</b>`);
     else if (tz) meta.push(`<b style="color:var(--thz);white-space:nowrap">⚡ ${esc(tz.kind)}範圍</b>`);
+    // AI 系集（實驗）只當參考標籤，不影響下面的建議；點了到預判頁看比對
+    const ea = ensAt(s);
+    if (ea && ea.p34 >= 10) meta.push(`<b class="ai-tag" data-sub="eq:imp">AI 8級風 ${ea.p34}%</b>`);
   }
   const aux = !inReport(s);
   return `<article class="st${aux ? ' aux' : ''}" data-id="${s.id}">
@@ -7935,11 +7963,140 @@ function mapLegend() {
   </p>`;
 }
 
+/* ═══ AI 系集（Weather Lab，實驗）══════════════════════════
+   後端（scripts/fetch_ens.py）把 Google DeepMind／Google Research 的 AI 系集颱風路徑（50～64 組成員）
+   換算成臺灣周邊 0.1° 格點的「8 級風（34 kt）／10 級風（50 kt）掃到機率」與成員中位數時間，寫成 data/ens.json。
+   原始路徑依條款不能公開轉存，所以這裡只有機率——地圖上也畫不出它的路徑，這是刻意的。
+   規則：
+   ① 跟官方、本機推估分開標示，**不進待機／復機建議（advise）**：條款明講不供實際決策，官方也沒有背書；
+   ② 34 kt 是「平均風」8 級下限，跟待機門檻看的「陣風」級數不是同一件事，表上不拿來直接比門檻；
+   ③ 檔不存在＝後端還沒產生（安靜，不顯示）；有 error＝真的抓不到（講原因）；grid 是 null＝有抓到、沒有成員掃到。 */
+let ENS = null;
+async function fetchEns() {
+  const j = await getJSON(new URL('data/ens.json', location.href).href, 9000, { cache: 'no-cache' }).catch(() => null);
+  ENS = j && j.v === 1 ? j : null;
+  try { renderImpact(); } catch (e) { console.warn('AI 系集比對畫不出來', e); }
+  try { if (DB.stations.length) renderStations(); } catch (e) {}
+  try { drawEns(); } catch (e) {}
+  return ENS;
+}
+const ENS_CITE_ZH = '資料來源：Weather Lab（Google DeepMind／Google Research 的 AI 系集颱風預報），由風哨換算成機率。';
+const ensInit = () => { const t = ENS && ENS.init ? Date.parse(ENS.init) : NaN; return Number.isFinite(t) ? t : 0; };
+// 站在範圍外回 null；範圍內但沒有成員掃到回全 0
+function ensAt(p) {
+  const R = ENS && ENS.region;
+  if (!R || !ensInit() || !p || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return null;
+  const j = Math.round((p.lat - R.lat0) / R.d), i = Math.round((p.lng - R.lon0) / R.d);
+  if (j < 0 || j >= R.ny || i < 0 || i >= R.nx) return null;
+  const g = ENS.grid, k = j * R.nx + i;
+  if (!g) return { p34: 0, p50: 0, t34: -1, t34x: -1 };
+  return { p34: g.p34[k] || 0, p50: g.p50[k] || 0, t34: g.t34[k] ?? -1, t34x: g.t34x[k] ?? -1 };
+}
+const ensH = h => ensInit() + h * 3600000;
+// AI 的機率色：洋紅一系（官方侵襲機率是青→紅，兩個並排時不會看成同一份）
+const ENS_HEX = v => v >= 70 ? '#E070C8' : v >= 40 ? '#C45BB0' : v >= 10 ? '#8E4A86' : '#4A3550';
+const tcName = id => { const m = /^([A-Z]{2})(\d{2})\d{4}$/.exec(id || ''); return m ? `${+m[2]}${m[1] === 'WP' ? 'W' : m[1] === 'EP' ? 'E' : m[1] === 'AL' ? 'L' : m[1]}` : (id || '?'); };
+
+function ensCard() {
+  if (!ENS) return '';
+  const init = ensInit();
+  const head = `<div class="sec"><h2>AI 系集比對 <span class="ai-x">實驗</span></h2></div>`;
+  const cite = `<p class="ai-cite">${ENS_CITE_ZH}<br>${esc(ENS.cite || '')}
+    <a href="${esc(ENS.terms || '#')}" target="_blank" rel="noopener">條款</a></p>`;
+  if (!init) {
+    return head + `<div class="card pad ai-card"><div class="msg w" style="margin:0">AI 系集抓不到：${esc(ENS.error || '後端還沒有成功抓過')}。
+      這份是實驗參考，抓不到不影響官方資料與待機判斷。</div>${cite}</div>`;
+  }
+  const ageH = Math.max(0, Math.round((Date.now() - init) / 3600000));
+  const meta = `<p class="ai-meta">Weather Lab　起報 <b>${fmtShort(init)}</b>　${ENS.members} 組成員　算到起報後 ${ENS.hours} 小時
+    <span class="${ageH >= 18 ? 'ai-old' : ''}">・已 ${ageH} 小時${ageH >= 18 ? '（偏舊）' : ''}</span></p>`;
+  const err = ENS.error ? `<div class="msg w" style="margin:0 0 0.5rem">最新一報抓不到（${esc(ENS.error)}），以下是 ${fmtShort(init)} 那一報。</div>` : '';
+  // 對應到氣象署這顆：起報位置離氣象署目前位置最近、500 km 內
+  const ty = DB.ty.data;
+  const storms = (ENS.storms || []).filter(x => x.pReg > 0 || (ty && ty.pos && distKm({ lat: x.lat, lng: x.lon }, ty.pos) < 500));
+  let match = null;
+  if (ty && ty.pos) {
+    for (const x of ENS.storms || []) {
+      const km = distKm({ lat: x.lat, lng: x.lon }, ty.pos);
+      if (km < 500 && (!match || km < match.km)) match = { x, km: Math.round(km) };
+    }
+  }
+  const sl = storms.length ? `<p class="ai-meta">${storms.map(x => `<b>${esc(tcName(x.id))}</b>${match && match.x === x
+      ? `（應為氣象署的「${esc(ty.name || '')}」，起報位置相距 ${match.km} km）` : ''}：${x.pReg}% 成員掃到臺灣周邊`).join('；')}</p>` : '';
+  const withXY = DB.stations.filter(s => IS_LIVE(s) && Number.isFinite(s.lat) && Number.isFinite(s.lng));
+  const inR = withXY.map(s => ({ s, a: ensAt(s) })).filter(r => r.a);
+  const out = withXY.length - inR.length;
+  if (!ENS.grid || !inR.some(r => r.a.p34 > 0)) {
+    return head + `<div class="card pad ai-card">${meta}${err}${sl}
+      <p class="ai-none">未來 ${ENS.hours} 小時，${ENS.grid ? '站臺所在位置' : '臺灣周邊'}沒有任何 AI 系集成員出現 8 級風（34 kt）。</p>
+      ${out ? `<p class="hint">${out} 站在 AI 換算範圍外（北緯 20–27.5 度、東經 115–124.5 度），沒有這份資料。</p>` : ''}${cite}</div>`;
+  }
+  // 本機推估（官方路徑＋渦旋模型）同列對照：AI 多數成員有 8 級風、本機卻不需待機（或反過來）要點出來
+  const rows = inR.map(r => ({ ...r, i: SERIES ? stationImpact(SERIES, r.s, DB.cfg) : null }))
+    .sort((x, y) => (y.a.p34 - x.a.p34) || (y.a.p50 - x.a.p50));
+  // 手機直式：一站一塊（站名＋機率條／AI 期間／本機推估），不用五欄表格——表格在 iPhone 上站名會被擠成直排
+  const win = a => a.t34 >= 0 ? `${fmtShort(ensH(a.t34))} – ${fmtShort(ensH(a.t34x))}` : '成員太少，不估時間';
+  const loc = i => !SERIES ? '沒有官方路徑' : !i ? '—'
+    : i.deadline ? `待機 ${fmtShort(i.deadline)}${i.resume ? `・復機 ${fmtShort(i.resume.t)}` : ''}` : '不需待機';
+  const flag = (a, i) => {
+    if (!SERIES || !i) return '';
+    if (a.p34 >= 50 && !i.deadline) return 'AI 多數有 8 級風，本機推估不需待機';
+    if (a.p34 < 10 && i.deadline) return '本機推估要待機，AI 多數沒有 8 級風';
+    return '';
+  };
+  const nDiff = rows.filter(r => flag(r.a, r.i)).length;
+  return head + `<div class="card pad ai-card">${meta}${err}${sl}
+  ${nDiff ? `<p class="imp-sum"><b style="color:var(--ai)">${nDiff} 站 AI 系集與本機推估方向相反</b>，以官方警報與現場實測為準</p>` : ''}
+  <div class="ai-list">${rows.map(({ s, a, i }) => { const f = flag(a, i); return `<div class="ai-row${f ? ' diff' : ''}">
+    <div class="ai-h"><b class="nm">${esc(s.name)}</b><span class="ai-p" style="--v:${a.p34}%">8 級風 <b>${a.p34}%</b></span></div>
+    <div class="ai-l"><em>AI</em>${a.p34 ? `8 級風 ${win(a)}` : '沒有成員掃到'}${a.p50 ? `・10 級風 <b>${a.p50}%</b>` : ''}</div>
+    <div class="ai-l loc"><em>本機</em>${loc(i)}</div>
+    ${f ? `<div class="ai-diff">⚠ ${f}</div>` : ''}</div>`; }).join('')}</div>
+  ${out ? `<p class="hint" style="margin:0.25rem 0 0">另有 ${out} 站在 AI 換算範圍外，沒有這份資料。</p>` : ''}
+  <details class="more" style="margin-top:0.375rem"><summary>這是什麼、怎麼看</summary><div class="hint">
+    <b>AI 系集</b>：Google 的 AI 天氣模型（WeatherNext）每 6 小時跑 ${ENS.members} 組略有不同的預報，每組各有一條颱風路徑與風圈。
+    <b>8 級風機率</b>＝起報後 ${ENS.hours} 小時內，這個點被該組 34 kt（約 17.5 m/s，8 級平均風下限）風圈掃到的組數比例；
+    10 級風用 50 kt（約 25.7 m/s）。<b>期間</b>是有掃到的那些組「開始」與「結束」時間的中位數；掃到的組數少於 ${ENS.minHits || 5} 組不估。
+    <br><b>跟官方的差別</b>：官方是氣象署預報員的單一路徑加潛勢範圍；AI 系集是另一個獨立模型的多種可能。
+    兩者接近時信心較高，差很多時代表路徑還不確定。AI 資料比氣象署晚約 6～10 小時（看上面的「已 N 小時」）。
+    <br><b>不作為待機依據</b>：這裡的機率是平均風、站臺待機看陣風；而且 Google 明講這是實驗資料、未經驗證、不供實際決策。
+    站臺卡的建議與上面的預判表完全沒有用到它。</div></details>${cite}</div>`;
+}
+
+/* 路徑頁的 AI 8 級風機率圖層：格網照麥卡托投影逐列畫進 canvas，再整張貼到地圖上（幾千個方塊用 Leaflet 一個個畫，手機會卡） */
+let ENSLAYER = null;
+function drawEns() {
+  if (!ENSLAYER || typeof L === 'undefined') return;
+  ENSLAYER.clearLayers();
+  const R = ENS && ENS.region, g = ENS && ENS.grid;
+  if (!R || !g || !ensInit()) return;
+  const merc = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
+  const latS = R.lat0 - R.d / 2, latN = R.lat0 + (R.ny - 0.5) * R.d;
+  const W = R.nx, H = 400, yOf = lat => (merc(latN) - merc(lat)) / (merc(latN) - merc(latS)) * H;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d');
+  for (let j = 0; j < R.ny; j++) {
+    const y0 = yOf(R.lat0 + (j + 0.5) * R.d), y1 = yOf(R.lat0 + (j - 0.5) * R.d);
+    for (let i = 0; i < R.nx; i++) {
+      const v = g.p34[j * R.nx + i];
+      if (!(v >= 10)) continue;
+      cx.fillStyle = ENS_HEX(v);
+      cx.fillRect(i, y0, 1, Math.max(1, y1 - y0) + 0.5);
+    }
+  }
+  L.imageOverlay(cv.toDataURL(), [[latS, R.lon0 - R.d / 2], [latN, R.lon0 + (R.nx - 0.5) * R.d]],
+    { pane: 'probPane', opacity: 0.45, interactive: false,
+      attribution: '8 級風機率：Weather Lab AI 系集（實驗）© 2024-6 Google LLC' }).addTo(ENSLAYER);
+}
+
 function renderImpact() {
   const tl = $('#tyTl');
   if (tl) tl.innerHTML = (SERIES ? mapLegend() : '') + (SERIES ? timelineCard() : '');
   const box = $('#tyImpact');
-  if (!SERIES) { box.innerHTML = ''; return; }
+  // AI 系集不靠氣象署路徑：氣象署還沒編號、還沒發預報之前，它可能已經看得到要來的那一顆
+  let ai = '';
+  try { ai = ensCard(); } catch (e) { console.warn('AI 系集比對畫不出來', e); }
+  if (!SERIES) { box.innerHTML = ai; return; }
   const withXY = DB.stations.filter(s => IS_LIVE(s) && Number.isFinite(s.lat) && Number.isFinite(s.lng));
   if (!withXY.length) {
     box.innerHTML = `<div class="sec"><h2>站臺衝擊預判</h2></div>
@@ -7982,7 +8139,7 @@ function renderImpact() {
     <b>判斷</b>＝推估與實測的平均風、陣風四者換成風級後取最高，待機就看這一欄。
     <b>推估</b>：平均風是渦旋模型算的海面持續風（含地形校正），陣風＝平均風 ×${GUST_FACTOR}；
     <b>實測</b>：最近測站的平均風與最大陣風（沒報陣風時以平均風 ×${GUST_FACTOR} 估，標「估」）。
-    ${obsHint()} ${rainHint()}</div></details>`;
+    ${obsHint()} ${rainHint()}</div></details>${ai}`;
 }
 
 /* 衝擊表的「實測」欄。
@@ -8314,6 +8471,10 @@ function renderLegend() {
     li('<i class="box" style="border-color:#FF5247;border-style:solid;background:linear-gradient(90deg,rgba(111,211,255,.35),rgba(240,166,58,.35),rgba(255,82,71,.35))"></i>',
       off ? '侵襲機率 <small>官方</small>' : '侵襲機率 <small>無資料</small>');
   }
+  if (ENSLAYER && MAP && MAP.hasLayer(ENSLAYER)) {
+    li('<i class="box" style="border-color:#E070C8;border-style:solid;background:linear-gradient(90deg,rgba(142,74,134,.45),rgba(224,112,200,.45))"></i>',
+      ENS && ENS.grid && ensInit() ? `8 級風機率 ≥10% <small>AI 實驗・${fmtShort(ensInit())} 起報</small>` : '8 級風機率 <small>AI 無資料</small>');
+  }
   if (MAP_NOCOAST && MAP && MAP.getContainer().classList.contains('hud')) li('<i class="dash" style="border-color:var(--sb)"></i>', '海岸線未載入 <small>連網後再開</small>');
   ul.innerHTML = it.join('');
 }
@@ -8325,7 +8486,8 @@ function renderLegend() {
    這是推估：模型是對稱的、沒有地形,陸地上的風不會長這樣,所以圖例標「推估」,也能從圖層鈕關掉。
    跟著時間軸走：拖到哪個時刻就畫那時候的風場。
    省電：不在路徑分頁、App 在背景、地圖拖動縮放時都停；系統要求減少動態時只畫一張靜態的。 */
-const FLOW_KEY = 'galepost.ui.flow', LTN_MAP_KEY = 'galepost.ui.ltnmap', PROB_MAP_KEY = 'galepost.ui.probmap';
+const FLOW_KEY = 'galepost.ui.flow', LTN_MAP_KEY = 'galepost.ui.ltnmap', PROB_MAP_KEY = 'galepost.ui.probmap',
+  ENS_MAP_KEY = 'galepost.ui.ensmap';
 const FLOW_COL = ['rgba(111,211,255,.22)', 'rgba(111,211,255,.5)', 'rgba(240,248,255,.62)', 'rgba(224,112,200,.85)'];
 const flowBin = ms => ms >= BF_MIN[12] ? 3 : ms >= BF_MIN[8] ? 2 : ms >= BF_MIN[6] ? 1 : 0;
 let FLOW = null;
@@ -8514,20 +8676,23 @@ function initMap() {
   FLOW = makeFlowLayer();
   LTNLAYER = L.layerGroup();
   PROBLAYER = L.layerGroup();
-  let fOn = true, lOn = true, pOn = false;
+  ENSLAYER = L.layerGroup();
+  let fOn = true, lOn = true, pOn = false, eOn = false;
   try {
     fOn = localStorage.getItem(FLOW_KEY) !== '0'; lOn = localStorage.getItem(LTN_MAP_KEY) !== '0';
-    pOn = localStorage.getItem(PROB_MAP_KEY) === '1';
+    pOn = localStorage.getItem(PROB_MAP_KEY) === '1'; eOn = localStorage.getItem(ENS_MAP_KEY) === '1';
   } catch (e) {}
   if (fOn) FLOW.addTo(MAP);
   if (lOn) LTNLAYER.addTo(MAP);
   if (pOn) PROBLAYER.addTo(MAP);
+  if (eOn) ENSLAYER.addTo(MAP);
   MAP.on('overlayadd overlayremove', e => {
     const on = e.type === 'overlayadd';
     try {
       if (e.layer === FLOW) localStorage.setItem(FLOW_KEY, on ? '1' : '0');
       if (e.layer === LTNLAYER) localStorage.setItem(LTN_MAP_KEY, on ? '1' : '0');
       if (e.layer === PROBLAYER) localStorage.setItem(PROB_MAP_KEY, on ? '1' : '0');
+      if (e.layer === ENSLAYER) localStorage.setItem(ENS_MAP_KEY, on ? '1' : '0');
     } catch (err) {}
     renderLegend();
   });
@@ -8605,6 +8770,7 @@ function drawStations(pts) {
   if (FLOW) ov['風場流線（推估）'] = FLOW;
   if (LTNLAYER) ov['落雷（實測・1 小時內）'] = LTNLAYER;
   if (PROBLAYER && probOfficial()) ov['侵襲機率（官方）'] = PROBLAYER;
+  if (ENSLAYER && ENS && ENS.grid && ensInit()) ov['AI 8 級風機率（實驗）'] = ENSLAYER;
   STCTRL = L.control.layers(BASELAYERS, Object.keys(ov).length ? ov : null,
     { position: 'topright', collapsed: true }).addTo(MAP);
 }
@@ -8913,6 +9079,7 @@ function drawMap(ty) {
     '', order, 1290).addTo(MLAYER));
 
   drawProb();
+  drawEns();
   drawStations(pts);
   drawLtn();
   /* 切到颱風頁的當下 #map 可能還沒有尺寸（剛從 display:none 出來）,

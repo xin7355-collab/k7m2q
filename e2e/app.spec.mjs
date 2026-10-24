@@ -30,7 +30,7 @@ async function boot(page, lightning, typhoon = PLACEHOLDER) {
   await page.route('**/data/lightning.json', r => r.fulfill({ json: lightning }));
   await page.route('**/data/typhoon.json', r => r.fulfill({ json: typhoon }));
   // 停班停課、天氣（雨量陣風特報）後端檔、颱風強度表：當成還沒產生，結果不看 repo 裡有沒有這些檔
-  await page.route(/\/data\/(dgpa|tyhist|wx)\.json/, r => r.fulfill({ status: 404, body: '' }));
+  await page.route(/\/data\/(dgpa|tyhist|wx|ens)\.json/, r => r.fulfill({ status: 404, body: '' }));
   await page.addInitScript(st => {
     // 初始化腳本也會在 Windy 的 iframe（被擋掉後是錯誤頁）裡跑，那裡碰 localStorage 會丟錯
     if (window.top !== window) return;
@@ -196,6 +196,7 @@ async function bootWith(page, stations, extra = {}) {
   await page.route('**/data/dgpa.json', r => extra.dgpa ? r.fulfill({ json: extra.dgpa }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/tyhist.json', r => extra.tyhist ? r.fulfill({ json: extra.tyhist }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/wx.json', r => extra.wx ? r.fulfill({ json: extra.wx }) : r.fulfill({ status: 404, body: '' }));
+  await page.route('**/data/ens.json', r => extra.ens ? r.fulfill({ json: extra.ens }) : r.fulfill({ status: 404, body: '' }));
   await page.addInitScript(([sts, ex]) => {
     if (window.top !== window) return;
     if (localStorage.getItem('galepost.v2')) return;
@@ -2346,5 +2347,98 @@ test('貼上比對：復機後段的訊息只寫有變的站——上次有、�
   await expect(cmp).toContainText('這份只寫了有變的站，沒出現的 1 站照上次的狀態');
   await expect(cmp.locator('.dif-s', { hasText: '甲站' })).toContainText('這次沒出現（照上次狀態）');
   await expect(cmp.locator('.c-no')).toHaveCount(0);                                   // 不標紅
+  expect(errors).toEqual([]);
+});
+
+/* ── AI 系集（Weather Lab，實驗）：後端只給機率格網，前端分開標示、不進建議（v85）── */
+const ENS_R = { lat0: 20, lon0: 115, d: 0.1, ny: 76, nx: 96 };
+function ensFile({ cells = {}, init = Date.now() - 7 * 3600000, grid = true, error = '' } = {}) {
+  const N = ENS_R.ny * ENS_R.nx, z = v => Array(N).fill(v);
+  const g = grid ? { p34: z(0), p50: z(0), t34: z(-1), t34x: z(-1) } : null;
+  for (const [ll, v] of Object.entries(cells)) {
+    const [lat, lon] = ll.split(',').map(Number);
+    const k = Math.round((lat - ENS_R.lat0) / ENS_R.d) * ENS_R.nx + Math.round((lon - ENS_R.lon0) / ENS_R.d);
+    for (const f of ['p34', 'p50', 't34', 't34x']) if (v[f] != null) g[f][k] = v[f];
+  }
+  const doc = { v: 1, src: 'Weather Lab', model: 'OPER', members: 50, hours: 120, error, region: ENS_R, grid: g,
+    storms: [{ id: 'WP302026', lat: 20.5, lon: 124.5, m: 50, pReg: 64 }], minHits: 5,
+    cite: '© 2024-6 Google LLC, whose machine learning models were used to create the experimental data made available under the following licence terms https://storage.googleapis.com/weathernext-public/terms-of-use.pdf. This data is intended for experimental modelling only and is not intended, validated, or approved for real world use.',
+    terms: 'https://storage.googleapis.com/weathernext-public/terms-of-use.pdf' };
+  if (init) doc.init = new Date(init).toISOString();
+  return doc;
+}
+
+test('AI 系集比對：機率、期間跟本機推估同列，站臺卡有標籤；出處與條款照規定標；不影響待機建議', async ({ page }) => {
+  const SOUTH = { ...KEEL, id: 'k2', name: '南部測試站', lat: 22.0, lng: 120.7 };
+  const init = Date.now() - 7 * 3600000;
+  const ens = ensFile({ init, cells: { '25.1,121.7': { p34: 80, p50: 24, t34: 30, t34x: 42 }, '22,120.7': { p34: 6 } } });
+  const errors = await bootWith(page, [KEEL, SOUTH, NEAR], { ens });
+  await toEq(page);
+  // 站臺卡：≥10% 才有標籤（南部 6% 沒有），範圍外的站（NEAR，東經 124.6）沒有
+  await expect(page.locator('.st[data-id="k1"] .ai-tag')).toHaveText('AI 8級風 80%');
+  await expect(page.locator('.st[data-id="k2"] .ai-tag')).toHaveCount(0);
+  await expect(page.locator('.st[data-id="n1"] .ai-tag')).toHaveCount(0);
+  // 點標籤到預判頁
+  await page.locator('.st[data-id="k1"] .ai-tag').click();
+  const card = page.locator('#tyImpact .ai-card');
+  await expect(card).toBeVisible();
+  await expect(page.locator('#tyImpact')).toContainText('AI 系集比對');
+  await expect(card).toContainText('50 組成員');
+  await expect(card).toContainText('已 7 小時');
+  await expect(card).toContainText('30W');
+  await expect(card).toContainText('64% 成員掃到臺灣周邊');
+  // 機率高的排前面；期間是起報 + 中位數時數
+  const first = card.locator('.ai-row').nth(0);
+  await expect(first).toContainText('基隆測試站');
+  await expect(first).toContainText('80%');
+  await expect(first).toContainText('24%');
+  const want = await page.evaluate(i => fmtShort(i + 30 * 3600000), init);
+  await expect(first).toContainText(want);
+  await expect(card.locator('.ai-row').nth(1)).toContainText('成員太少，不估時間');
+  await expect(card).toContainText('另有 1 站在 AI 換算範圍外');
+  // 條款 4(b) 規定的出處與著作權聲明要看得到，條款連結要能點
+  await expect(card.locator('.ai-cite')).toContainText('Weather Lab');
+  await expect(card.locator('.ai-cite')).toContainText('© 2024-6 Google LLC');
+  await expect(card.locator('.ai-cite')).toContainText('not intended, validated, or approved for real world use');
+  await expect(card.locator('.ai-cite a')).toHaveAttribute('href', /weathernext-public\/terms-of-use\.pdf$/);
+  // 建議（advise）完全不看 AI：拿掉 ENS 前後一樣
+  const same = await page.evaluate(() => {
+    const imp = impactMap();
+    const a = DB.stations.map(s => JSON.stringify(advise(s, imp[s.id], DB.cfg)));
+    const keep = ENS; ENS = null;
+    const b = DB.stations.map(s => JSON.stringify(advise(s, imp[s.id], DB.cfg)));
+    ENS = keep;
+    return a.join() === b.join();
+  });
+  expect(same).toBe(true);
+  // 路徑頁：圖層鈕有 AI 機率（預設關），打開後是一張貼圖、圖例標實驗與起報時間
+  await goMap(page);
+  await expect(page.locator('.leaflet-control-layers')).toContainText('AI 8 級風機率（實驗）');
+  expect(await page.evaluate(() => MAP.hasLayer(ENSLAYER))).toBe(false);
+  await page.evaluate(() => MAP.addLayer(ENSLAYER));
+  expect(await page.evaluate(() => ENSLAYER.getLayers().length)).toBe(1);
+  await expect(page.locator('.map-lg')).toContainText('AI 實驗');
+  expect(await page.evaluate(() => localStorage.getItem('galepost.ui.ensmap'))).toBe('1');
+  expect(errors).toEqual([]);
+});
+
+test('AI 系集：檔還沒產生就不出現；抓不到講原因；有抓到但沒成員掃到要講清楚（不是沒資料）', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL]);
+  await toEq(page);
+  await page.locator('#eqSeg button[data-sub="eq:imp"]').click();
+  await page.waitForFunction(() => typeof SERIES !== 'undefined' && SERIES && SERIES.length > 1);
+  await expect(page.locator('#tyImpact')).toContainText('站臺衝擊預判');
+  await expect(page.locator('#tyImpact')).not.toContainText('AI 系集');
+  await expect(page.locator('.st .ai-tag')).toHaveCount(0);
+  // 後端連一次都沒成功過：只有錯誤原因
+  await page.evaluate(d => { ENS = d; renderImpact(); }, ensFile({ init: 0, grid: false, error: 'Weather Lab 近 30 小時都沒有檔案' }));
+  await expect(page.locator('#tyImpact .ai-card')).toContainText('AI 系集抓不到：Weather Lab 近 30 小時都沒有檔案');
+  // 抓到了、沒有成員掃到臺灣周邊
+  await page.evaluate(d => { ENS = d; renderImpact(); }, ensFile({ grid: false }));
+  await expect(page.locator('#tyImpact .ai-card')).toContainText('臺灣周邊沒有任何 AI 系集成員出現 8 級風');
+  // 最新一報抓不到、手上有舊的：照實標舊的起報時間與偏舊
+  await page.evaluate(d => { ENS = d; renderImpact(); }, ensFile({ init: Date.now() - 20 * 3600000, error: '連不上', cells: { '25.1,121.7': { p34: 40 } } }));
+  await expect(page.locator('#tyImpact .ai-card')).toContainText('最新一報抓不到（連不上）');
+  await expect(page.locator('#tyImpact .ai-card .ai-old')).toContainText('偏舊');
   expect(errors).toEqual([]);
 });
