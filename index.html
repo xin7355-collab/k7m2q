@@ -640,6 +640,15 @@ details.more>.hint{margin-top:0.25rem}
 .ai-cite{margin:0.5rem 0 0;font-size:0.625rem;line-height:1.45;color:var(--fg4);word-break:break-word}
 .ai-cite a{color:var(--fg3)}
 .ai-tag{color:var(--ai);white-space:nowrap;cursor:pointer}
+/* 模式系集（ECMWF，非官方）：粉白細線，跟 AI 機率（洋紅）、官方路徑（青）分開 */
+.ec-x{font:700 0.625rem var(--sans);color:#FFC4E1;border:1px solid rgba(255,196,225,.6);border-radius:var(--r3);padding:0 0.25rem;vertical-align:middle}
+.ec-card{border-color:rgba(255,196,225,.3);margin-bottom:0.875rem}
+.ec-row{border:1px solid var(--edge);border-radius:var(--r);padding:0.4375rem 0.5625rem;background:var(--surf)}
+.ec-row.me{border-color:rgba(255,196,225,.55)}
+.ec-row .nm small{margin-left:0.375rem;font:0.6875rem var(--mono);color:var(--fg4)}
+.ec-p{flex:none;min-width:5.5rem;text-align:right;padding:0.125rem 0.375rem;border-radius:var(--r3);font:700 0.8125rem var(--mono);color:#FFC4E1;
+  background:linear-gradient(90deg,rgba(255,196,225,.14) var(--v),transparent var(--v));box-shadow:inset 0 0 0 1px rgba(255,196,225,.3)}
+.ec-row .ai-l b{color:#FFC4E1}
 .impact tr.imp-bad td{background:var(--no-d)}
 .imp-ok{font-size:0.6875rem;color:var(--ok)}
 .imp-no{font-size:0.6875rem;color:var(--no);font-weight:700}
@@ -1304,6 +1313,8 @@ details.more>.hint{margin-top:0.25rem}
     </div>
     <div id="tyTl"></div>
     <div id="tyFc"></div>
+    <!-- 模式系集（ECMWF，非官方）：5 天以後的路徑走向，預設不畫在圖上 -->
+    <div id="tyEc"></div>
   </div>
 </section>
 
@@ -1911,7 +1922,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v86';
+const APP_VER = 'v87';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -3950,6 +3961,7 @@ async function loadTyphoon(manual) {
   // 公告來源跟颱風資料一起更新。沒設定就是 no-op,不會多送任何請求。
   fetchDgpa(false);
   fetchEns();                       // AI 系集（實驗）：同源靜態檔，跟颱風路徑互不等待
+  fetchEcens();                     // 模式系集路徑（ECMWF，非官方）：同上
   const key = (DB.cfg.cwaKey || '').trim();
   let note = '';
   // 實測觀測跟颱風路徑是兩件事:就算氣象署現在沒有任何颱風,
@@ -5116,6 +5128,7 @@ function renderTyphoon(o) {
   drawMap(ty);
   renderImpact();
   renderForecast();
+  safeHtml('#tyEc', ecCard, '模式系集');
 }
 
 /* ── 各縣市停班停課「官方」資訊 ─────────────────────────────
@@ -7543,9 +7556,11 @@ function fallbackCopy(txt, done) {
 
 function clearTyPanes() {
   // 天氣（tyWx）與雷電（tyThunder）不清：它們不依賴颱風資料
-  ['tyPick', 'tyTl', 'tyImpact', 'tyFc', 'tyBrief', 'tyEvt'].forEach(id => {
+  ['tyPick', 'tyTl', 'tyFc', 'tyBrief', 'tyEvt'].forEach(id => {
     const el = document.getElementById(id); if (el) el.innerHTML = '';
   });
+  // 預判頁只剩 AI 系集那張（它不靠氣象署路徑）；模式系集卡（tyEc）也不清——氣象署還沒編號前它就看得到
+  try { renderImpact(); } catch (e) {}
   /* 播報員是獨立分頁,清空會變成一頁空白,看不出是壞了還是沒東西。
      這裡分不出「沒有颱風」跟「還沒抓到」,所以不下結論,請他看總覽（那邊有寫是哪一種）。 */
   const b = document.getElementById('tyBrief');
@@ -7977,7 +7992,7 @@ async function fetchEns() {
   ENS = j && j.v === 1 ? j : null;
   try { renderImpact(); } catch (e) { console.warn('AI 系集比對畫不出來', e); }
   try { if (DB.stations.length) renderStations(); } catch (e) {}
-  try { drawEns(); } catch (e) {}
+  try { drawEns(); refreshOverlays(); } catch (e) {}
   return ENS;
 }
 const ENS_CITE_ZH = '資料來源：Weather Lab（Google DeepMind／Google Research 的 AI 系集颱風預報），由風哨換算成機率。';
@@ -8087,6 +8102,110 @@ function drawEns() {
   L.imageOverlay(cv.toDataURL(), [[latS, R.lon0 - R.d / 2], [latN, R.lon0 + (R.nx - 0.5) * R.d]],
     { pane: 'probPane', opacity: 0.45, interactive: false,
       attribution: '8 級風機率：Weather Lab AI 系集（實驗）© 2024-6 Google LLC' }).addTo(ENSLAYER);
+}
+
+/* ═══ 模式系集路徑（ECMWF，非官方）═══════════════════════════
+   使用者（2026-10-25）：別人的颱風圖有一大把畫到 10 天的線，我的只有官方 5 天。那些線是數值模式的系集成員，不是預報。
+   後端（scripts/fetch_ecens.py）把 ECMWF 開放資料（CC BY 4.0）的系集颱風路徑簡化成 data/ecens.json。
+   規則：預設不畫（圖層鈕打開）、標非官方、第 6 天以後變淡變虛線、不進待機建議；卡片只講「幾組成員的中心會進到臺灣多近」，
+   不講「颱風會怎麼走」——第 7～10 天成員之間常差上千公里。 */
+let ECENS = null, ECLAYER = null, _ecMemo = null;
+async function fetchEcens() {
+  const j = await getJSON(new URL('data/ecens.json', location.href).href, 9000, { cache: 'no-cache' }).catch(() => null);
+  ECENS = j && j.v === 1 ? j : null;
+  _ecMemo = null;
+  safeHtml('#tyEc', ecCard, '模式系集');
+  try { drawEcens(); refreshOverlays(); } catch (e) {}
+  return ECENS;
+}
+const ecInit = () => { const t = ECENS && ECENS.init ? Date.parse(ECENS.init) : NaN; return Number.isFinite(t) ? t : 0; };
+// 成員路徑：[時數, 緯×10, 經×10, 風速, …] → [{h, lat, lng, w}]
+const ecPts = tr => { const o = []; for (let k = 0; k + 3 < tr.length; k += 4) o.push({ h: tr[k], lat: tr[k + 1] / 10, lng: tr[k + 2] / 10, w: tr[k + 3] }); return o; };
+// 這顆是不是氣象署選中的那顆：英文名一樣，或起報位置 500 km 內
+function ecMatch(st) {
+  const ty = DB.ty.data;
+  if (!ty) return false;
+  if (ty.en && st.name && ty.en.replace(/[^A-Z]/gi, '').toUpperCase() === st.name.replace(/[^A-Z]/gi, '').toUpperCase()) return true;
+  return !!(ty.pos && st.obs && distKm({ lat: st.obs[0], lng: st.obs[1] }, ty.pos) < 500);
+}
+// 氣象署的中文名：雙颱時從清單裡找英文名對得上的那顆
+function ecZh(st) {
+  const k = s => String(s || '').replace(/[^A-Z]/gi, '').toUpperCase();
+  const t = (DB.ty.list || []).find(x => x && k(x.en) && k(x.en) === k(st.name));
+  return t ? t.name : '';
+}
+// 每組成員中心最接近臺灣（本島＋離島）的距離與時刻；同一報只算一次
+function ecNear() {
+  if (_ecMemo && _ecMemo.init === ecInit()) return _ecMemo.v;
+  const v = (ECENS.storms || []).map(st => st.tracks.map(tr => {
+    let best = { km: Infinity, h: -1 };
+    for (const p of ecPts(tr)) {
+      if (Math.abs(p.lat - 23.7) > 12 || Math.abs(p.lng - 121) > 14) continue;     // 離臺灣十幾度以上的點不必算
+      const km = distToTaiwan(p);
+      if (km < best.km) best = { km, h: p.h };
+    }
+    return best;
+  }));
+  _ecMemo = { init: ecInit(), v };
+  return v;
+}
+const EC_NEAR_KM = 300;
+function ecCard() {
+  if (!ECENS) return '';
+  const init = ecInit();
+  const head = `<div class="sec"><h2>模式系集路徑 <span class="ec-x">非官方</span></h2></div>`;
+  const cite = `<p class="ai-cite">${esc(ECENS.cite || '')}<br>修改：${esc(ECENS.mods || '')}</p>`;
+  if (!init) return head + `<div class="card pad ec-card"><div class="msg w" style="margin:0">ECMWF 系集路徑抓不到：${esc(ECENS.error || '後端還沒成功抓過')}。</div>${cite}</div>`;
+  const ageH = Math.max(0, Math.round((Date.now() - init) / 3600000));
+  const meta = `<p class="ai-meta">ECMWF 系集　起報 <b>${fmtShort(init)}</b>　每顆最多 ${ECENS.members} 組成員　畫到起報後 ${Math.round(ECENS.hours / 24)} 天
+    <span class="${ageH >= 30 ? 'ai-old' : ''}">・已 ${ageH} 小時${ageH >= 30 ? '（偏舊）' : ''}</span></p>`;
+  const err = ECENS.error ? `<div class="msg w" style="margin:0 0 0.5rem">最新一報抓不到（${esc(ECENS.error)}），以下是 ${fmtShort(init)} 那一報。</div>` : '';
+  const storms = ECENS.storms || [];
+  if (!storms.length) return head + `<div class="card pad ec-card">${meta}${err}<p class="ai-none">這一報西太平洋沒有已編號的颱風。</p>${cite}</div>`;
+  const near = ecNear();
+  const rows = storms.map((st, i) => {
+    const ns = near[i], n = ns.length;
+    const hit = ns.filter(x => x.km <= EC_NEAR_KM), hit5 = hit.filter(x => x.h <= 120);
+    const first = hit.length ? Math.min(...hit.map(x => x.h)) : -1;
+    const zh = ecZh(st), m = ecMatch(st);
+    return `<div class="ec-row${m ? ' me' : ''}">
+      <div class="ai-h"><b class="nm">${esc(zh || st.name)}${zh ? `<small>${esc(st.name)}</small>` : ''}<small>${esc(st.id)}</small></b>
+        <span class="ec-p" style="--v:${Math.round(100 * hit.length / n)}%">${hit.length} / ${n} 組</span></div>
+      <div class="ai-l">10 天內中心進到臺灣 ${EC_NEAR_KM} km 內：<b>${hit.length}</b> 組${hit.length ? `（5 天內 ${hit5.length} 組），${first === 0 ? '起報時就已在範圍內' : '最早 ' + fmtShort(init + first * 3600000)}` : ''}</div>
+    </div>`;
+  }).join('');
+  return head + `<div class="card pad ec-card">${meta}${err}<div class="ai-list">${rows}</div>
+    <div class="btnrow" style="margin-top:0.5rem"><button class="btn sm" onclick="ecShow()">在路徑圖上看這些線</button></div>
+    <details class="more" style="margin-top:0.375rem"><summary>這是什麼、怎麼看</summary><div class="hint">
+      <b>不是預報</b>：歐洲中期天氣預報中心（ECMWF）用 ${ECENS.members} 組略有不同的起始條件各跑一次模式，每條線是其中一組的颱風中心位置。
+      官方預報（氣象署）只發到 5 天；別的颱風網站畫到 10 天以上的那一大把線，就是這一類。
+      <br><b>怎麼看</b>：線擠在一起＝各組看法接近；散開＝路徑還很不確定。第 6 天以後的線畫得較淡、虛線，因為那時各組常常差上千公里。
+      「進到臺灣 ${EC_NEAR_KM} km 內幾組」只是提早看有沒有可能，可以先排班、先準備；<b>待機與復機仍以官方預報與現場實測為準</b>，站臺建議沒有用到它。
+      <br>一天兩報（臺灣時間約下午 4 點、凌晨 4 點後可取得），比氣象署晚 8～12 小時。</div></details>${cite}</div>`;
+}
+// 卡片上的按鈕：打開圖層、捲到地圖
+function ecShow() {
+  if (!MAP || !ECLAYER) { toast('有颱風路徑圖時才能畫'); return; }
+  if (!MAP.hasLayer(ECLAYER)) MAP.addLayer(ECLAYER);
+  $('#mapWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+let EC_RENDER = null;
+function drawEcens() {
+  if (!ECLAYER || typeof L === 'undefined') return;
+  ECLAYER.clearLayers();
+  if (!ECENS || !ecInit()) return;
+  if (!EC_RENDER) EC_RENDER = L.canvas({ padding: 0.3 });
+  for (const st of ECENS.storms || []) {
+    const me = ecMatch(st), col = me ? '#FFC4E1' : '#9FB3BF';
+    for (const tr of st.tracks) {
+      const p = ecPts(tr), a = p.filter(x => x.h <= 120), b = p.filter(x => x.h >= 120);
+      // 第 1～5 天：實線；第 6 天以後：淡、虛線（跟官方預報同長的那段才比較可信）
+      if (a.length > 1) L.polyline(a.map(x => [x.lat, x.lng]), { renderer: EC_RENDER, interactive: false, color: col, weight: 1, opacity: me ? .5 : .3 }).addTo(ECLAYER);
+      if (b.length > 1) L.polyline(b.map(x => [x.lat, x.lng]), { renderer: EC_RENDER, interactive: false, color: col, weight: 1, opacity: me ? .22 : .14, dashArray: '3,4' }).addTo(ECLAYER);
+    }
+  }
+  // CC BY 4.0：圖上要看得到出處
+  L.polyline([], { attribution: '系集路徑 © ECMWF（CC BY 4.0，經簡化）' }).addTo(ECLAYER);
 }
 
 function renderImpact() {
@@ -8475,6 +8594,10 @@ function renderLegend() {
     li('<i class="box" style="border-color:#E070C8;border-style:solid;background:linear-gradient(90deg,rgba(142,74,134,.45),rgba(224,112,200,.45))"></i>',
       ENS && ENS.grid && ensInit() ? `8 級風機率 ≥10% <small>AI 實驗・${fmtShort(ensInit())} 起報</small>` : '8 級風機率 <small>AI 無資料</small>');
   }
+  if (ECLAYER && MAP && MAP.hasLayer(ECLAYER)) {
+    li('<i style="border-color:#FFC4E1"></i>', ECENS && ecInit()
+      ? `模式系集 <small>ECMWF 非官方・${fmtShort(ecInit())} 起報・第 6 天起變淡</small>` : '模式系集 <small>無資料</small>');
+  }
   if (MAP_NOCOAST && MAP && MAP.getContainer().classList.contains('hud')) li('<i class="dash" style="border-color:var(--sb)"></i>', '海岸線未載入 <small>連網後再開</small>');
   ul.innerHTML = it.join('');
 }
@@ -8487,7 +8610,7 @@ function renderLegend() {
    跟著時間軸走：拖到哪個時刻就畫那時候的風場。
    省電：不在路徑分頁、App 在背景、地圖拖動縮放時都停；系統要求減少動態時只畫一張靜態的。 */
 const FLOW_KEY = 'galepost.ui.flow', LTN_MAP_KEY = 'galepost.ui.ltnmap', PROB_MAP_KEY = 'galepost.ui.probmap',
-  ENS_MAP_KEY = 'galepost.ui.ensmap';
+  ENS_MAP_KEY = 'galepost.ui.ensmap', EC_MAP_KEY = 'galepost.ui.ecmap';
 const FLOW_COL = ['rgba(111,211,255,.22)', 'rgba(111,211,255,.5)', 'rgba(240,248,255,.62)', 'rgba(224,112,200,.85)'];
 const flowBin = ms => ms >= BF_MIN[12] ? 3 : ms >= BF_MIN[8] ? 2 : ms >= BF_MIN[6] ? 1 : 0;
 let FLOW = null;
@@ -8677,11 +8800,14 @@ function initMap() {
   LTNLAYER = L.layerGroup();
   PROBLAYER = L.layerGroup();
   ENSLAYER = L.layerGroup();
-  let fOn = true, lOn = true, pOn = false, eOn = false;
+  ECLAYER = L.layerGroup();
+  let fOn = true, lOn = true, pOn = false, eOn = false, cOn = false;
   try {
     fOn = localStorage.getItem(FLOW_KEY) !== '0'; lOn = localStorage.getItem(LTN_MAP_KEY) !== '0';
     pOn = localStorage.getItem(PROB_MAP_KEY) === '1'; eOn = localStorage.getItem(ENS_MAP_KEY) === '1';
+    cOn = localStorage.getItem(EC_MAP_KEY) === '1';
   } catch (e) {}
+  if (cOn) ECLAYER.addTo(MAP);
   if (fOn) FLOW.addTo(MAP);
   if (lOn) LTNLAYER.addTo(MAP);
   if (pOn) PROBLAYER.addTo(MAP);
@@ -8693,6 +8819,7 @@ function initMap() {
       if (e.layer === LTNLAYER) localStorage.setItem(LTN_MAP_KEY, on ? '1' : '0');
       if (e.layer === PROBLAYER) localStorage.setItem(PROB_MAP_KEY, on ? '1' : '0');
       if (e.layer === ENSLAYER) localStorage.setItem(ENS_MAP_KEY, on ? '1' : '0');
+      if (e.layer === ECLAYER) localStorage.setItem(EC_MAP_KEY, on ? '1' : '0');
     } catch (err) {}
     renderLegend();
   });
@@ -8758,9 +8885,14 @@ function drawStations(pts) {
       { icon: stTag(s.name), zIndexOffset: 790, interactive: false, pri: 1 }).addTo(g));
     pts.push([s.lat, s.lng]); MYPTS.push([s.lat, s.lng]);
   });
+  refreshOverlays();
+}
 
-  /* 圖層控制每次重畫都要換掉 —— 類別可能被改名、新增或刪除,
-     沿用舊的控制項會指向已經從地圖上移除的圖層。 */
+/* 圖層控制每次重畫都要換掉 —— 類別可能被改名、新增或刪除,
+   沿用舊的控制項會指向已經從地圖上移除的圖層。
+   AI 機率、模式系集這兩份檔比地圖晚到時也要重建一次,不然圖層鈕裡沒有它們、要等下一次重畫才出現。 */
+function refreshOverlays() {
+  if (!MAP || !STLAYERS) return;
   if (STCTRL) { MAP.removeControl(STCTRL); STCTRL = null; }
   const ov = {};
   for (const [k, g] of Object.entries(STLAYERS)) {
@@ -8771,6 +8903,7 @@ function drawStations(pts) {
   if (LTNLAYER) ov['落雷（實測・1 小時內）'] = LTNLAYER;
   if (PROBLAYER && probOfficial()) ov['侵襲機率（官方）'] = PROBLAYER;
   if (ENSLAYER && ENS && ENS.grid && ensInit()) ov['AI 8 級風機率（實驗）'] = ENSLAYER;
+  if (ECLAYER && ECENS && (ECENS.storms || []).length) ov['模式系集路徑（ECMWF・非官方）'] = ECLAYER;
   STCTRL = L.control.layers(BASELAYERS, Object.keys(ov).length ? ov : null,
     { position: 'topright', collapsed: true }).addTo(MAP);
 }
@@ -9080,6 +9213,7 @@ function drawMap(ty) {
 
   drawProb();
   drawEns();
+  drawEcens();
   drawStations(pts);
   drawLtn();
   /* 切到颱風頁的當下 #map 可能還沒有尺寸（剛從 display:none 出來）,

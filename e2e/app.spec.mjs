@@ -30,7 +30,7 @@ async function boot(page, lightning, typhoon = PLACEHOLDER) {
   await page.route('**/data/lightning.json', r => r.fulfill({ json: lightning }));
   await page.route('**/data/typhoon.json', r => r.fulfill({ json: typhoon }));
   // 停班停課、天氣（雨量陣風特報）後端檔、颱風強度表：當成還沒產生，結果不看 repo 裡有沒有這些檔
-  await page.route(/\/data\/(dgpa|tyhist|wx|ens)\.json/, r => r.fulfill({ status: 404, body: '' }));
+  await page.route(/\/data\/(dgpa|tyhist|wx|ens|ecens)\.json/, r => r.fulfill({ status: 404, body: '' }));
   await page.addInitScript(st => {
     // 初始化腳本也會在 Windy 的 iframe（被擋掉後是錯誤頁）裡跑，那裡碰 localStorage 會丟錯
     if (window.top !== window) return;
@@ -197,6 +197,7 @@ async function bootWith(page, stations, extra = {}) {
   await page.route('**/data/tyhist.json', r => extra.tyhist ? r.fulfill({ json: extra.tyhist }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/wx.json', r => extra.wx ? r.fulfill({ json: extra.wx }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/ens.json', r => extra.ens ? r.fulfill({ json: extra.ens }) : r.fulfill({ status: 404, body: '' }));
+  await page.route('**/data/ecens.json', r => extra.ecens ? r.fulfill({ json: extra.ecens }) : r.fulfill({ status: 404, body: '' }));
   await page.addInitScript(([sts, ex]) => {
     if (window.top !== window) return;
     if (localStorage.getItem('galepost.v2')) return;
@@ -2440,5 +2441,73 @@ test('AI 系集：檔還沒產生就不出現；抓不到講原因；有抓到�
   await page.evaluate(d => { ENS = d; renderImpact(); }, ensFile({ init: Date.now() - 20 * 3600000, error: '連不上', cells: { '25.1,121.7': { p34: 40 } } }));
   await expect(page.locator('#tyImpact .ai-card')).toContainText('最新一報抓不到（連不上）');
   await expect(page.locator('#tyImpact .ai-card .ai-old')).toContainText('偏舊');
+  expect(errors).toEqual([]);
+});
+
+/* ── 模式系集路徑（ECMWF，非官方，v87）：使用者要看到 5 天以後的路徑走向 ── */
+function ecensFile({ init = Date.now() - 19 * 3600000, storms } = {}) {
+  // 成員路徑：[時數, 緯×10, 經×10, 風速, …]，6 小時一點到 240 小時
+  const tr = (lat0, lng0, dlat, dlng) => Array.from({ length: 41 }, (_, k) => [6 * k, Math.round((lat0 + dlat * k) * 10), Math.round((lng0 + dlng * k) * 10), 30]).flat();
+  return { v: 1, src: 'ECMWF', model: 'IFS ENS', init: new Date(init).toISOString(), hours: 240, members: 3, error: '',
+    storms: storms || [{ id: '29W', name: 'TESTA', obs: [20.5, 124.5], n: 3, tracks: [
+      tr(20.5, 124.5, 0.1, -0.2),     // 往臺灣：24 小時後就到 300 km 內
+      tr(20.5, 124.5, 0.5, 0.3),      // 往東北遠離
+      tr(20.5, 124.5, 0.3, 0.5)] }],
+    cite: '© 2026 European Centre for Medium-Range Weather Forecasts (ECMWF). Source: www.ecmwf.int. Licence: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).',
+    mods: '只留已編號颱風、西太平洋、起報後 240 小時內；6 小時一點，座標取到 0.1 度、風速取整數。' };
+}
+
+test('模式系集路徑（ECMWF）：路徑頁有卡片講幾組成員會靠近臺灣；圖層預設關，打開後 5 天內實線、之後淡虛線；出處與修改說明照 CC BY 標', async ({ page }) => {
+  const init = Date.now() - 19 * 3600000;
+  const errors = await bootWith(page, [NEAR], { ty: typhoonFileFull(), ecens: ecensFile({ init }) });
+  await goMap(page);
+  const card = page.locator('#tyEc .ec-card');
+  await expect(card).toBeVisible();
+  await expect(page.locator('#tyEc')).toContainText('模式系集路徑');
+  await expect(page.locator('#tyEc .ec-x')).toHaveText('非官方');
+  await expect(card).toContainText('已 19 小時');
+  // 對上氣象署那顆（英文名一樣）：顯示中文名、整列標出來
+  await expect(card.locator('.ec-row.me')).toContainText('測試颱風');
+  await expect(card.locator('.ec-row.me .ec-p')).toHaveText('1 / 3 組');
+  await expect(card).toContainText('5 天內 1 組');
+  await expect(card).toContainText('待機與復機仍以官方預報與現場實測為準');
+  // CC BY 4.0：出處、授權、修改都要寫
+  await expect(card.locator('.ai-cite')).toContainText('© 2026 European Centre for Medium-Range Weather Forecasts (ECMWF)');
+  await expect(card.locator('.ai-cite')).toContainText('CC BY 4.0');
+  await expect(card.locator('.ai-cite')).toContainText('修改：只留已編號颱風');
+  // 圖層：預設關；從卡片按鈕打開
+  await expect(page.locator('.leaflet-control-layers')).toContainText('模式系集路徑（ECMWF・非官方）');
+  expect(await page.evaluate(() => MAP.hasLayer(ECLAYER))).toBe(false);
+  await card.locator('button', { hasText: '在路徑圖上看這些線' }).click();
+  expect(await page.evaluate(() => MAP.hasLayer(ECLAYER))).toBe(true);
+  const segs = await page.evaluate(() => ECLAYER.getLayers().filter(l => l.getLatLngs().length).map(l => ({ n: l.getLatLngs().length, dash: !!l.options.dashArray, op: l.options.opacity })));
+  expect(segs.length).toBe(6);                                   // 3 組 ×（前 5 天＋之後）
+  expect(segs.filter(x => !x.dash).every(x => x.n === 21)).toBe(true);   // 0～120 小時 21 點、實線
+  expect(segs.filter(x => x.dash).every(x => x.n === 21 && x.op < 0.3)).toBe(true);   // 120～240 小時、淡虛線
+  await expect(page.locator('.map-lg')).toContainText('模式系集');
+  await expect(page.locator('.leaflet-control-attribution')).toContainText('© ECMWF');
+  expect(await page.evaluate(() => localStorage.getItem('galepost.ui.ecmap'))).toBe('1');
+  // 不進待機建議
+  const same = await page.evaluate(() => {
+    const imp = impactMap();
+    const a = DB.stations.map(s => JSON.stringify(advise(s, imp[s.id], DB.cfg)));
+    const keep = ECENS; ECENS = null;
+    const b = DB.stations.map(s => JSON.stringify(advise(s, imp[s.id], DB.cfg)));
+    ECENS = keep;
+    return a.join() === b.join();
+  });
+  expect(same).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('模式系集：檔還沒產生就不出現；抓不到講原因；西太平洋沒颱風要講', async ({ page }) => {
+  const errors = await bootWith(page, [NEAR], { ty: typhoonFileFull() });
+  await goMap(page);
+  await expect(page.locator('#tyFc')).toContainText('路徑潛勢預報');
+  await expect(page.locator('#tyEc')).toBeEmpty();
+  await page.evaluate(d => { ECENS = d; renderTyphoon({}); }, { v: 1, storms: [], error: '氣象署有颱風，ECMWF 卻 48 小時都沒有颱風路徑檔' });
+  await expect(page.locator('#tyEc .ec-card')).toContainText('ECMWF 系集路徑抓不到：氣象署有颱風');
+  await page.evaluate(d => { ECENS = d; renderTyphoon({}); }, ecensFile({ storms: [] }));
+  await expect(page.locator('#tyEc .ec-card')).toContainText('西太平洋沒有已編號的颱風');
   expect(errors).toEqual([]);
 });

@@ -1,6 +1,6 @@
 # 氣象署資料的後端管線：落雷（data/lightning.json）＋颱風路徑與警報單（data/typhoon.json）
 # ＋人事行政總處停班停課公告（data/dgpa.json，官方頁沒有 CORS、前端的第三方代理會掛，後端直接抓）
-# ＋雨量站、測站陣風、豪大雨雷雨特報（data/wx.json）＋AI 系集 8／10 級風機率（data/ens.json）。
+# ＋雨量站、測站陣風、豪大雨雷雨特報（data/wx.json）＋AI 系集 8／10 級風機率（data/ens.json）＋ECMWF 系集颱風路徑（data/ecens.json）。
 #
 # 兩支放同一個工作流程、同一個 commit：分開兩支的話會同時推同一條分支，
 # 後推的那支會因為不是 fast-forward 被拒，資料就白抓了。
@@ -82,6 +82,7 @@ jobs:
           python scripts/fetch_wx.py selftest
           python scripts/fetch_gate.py selftest
           python scripts/fetch_ens.py selftest
+          python scripts/fetch_ecens.py selftest
 
       - name: Fetch
         if: steps.gate.outputs.run == '1'
@@ -115,6 +116,14 @@ jobs:
       - name: Fetch AI ensemble
         if: always() && steps.gate.outputs.run == '1'
         run: python scripts/fetch_ens.py
+
+      # ECMWF 系集颱風路徑（data/ecens.json，CC BY 4.0）：路徑頁「模式系集」細線（非官方、到 10 天）。
+      # 檔案是 BUFR，要 ECMWF 自己的 eccodes 解（pip 版附函式庫）；裝不起來只影響這一步，其他資料照推
+      - name: Fetch ECMWF ensemble tracks
+        if: always() && steps.gate.outputs.run == '1'
+        run: |
+          python -m pip install --quiet --disable-pip-version-check eccodes==2.50.0
+          python scripts/fetch_ecens.py
 
       # 內容沒變就不要 commit —— 沒有雷的日子不該每十分鐘產生一次提交，
       # 每一次提交都會觸發一輪 Pages 重新部署。
