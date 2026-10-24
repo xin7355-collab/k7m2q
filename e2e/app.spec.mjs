@@ -2386,7 +2386,7 @@ test('AI 系集比對：機率、期間跟本機推估同列，站臺卡有標�
   await expect(card).toContainText('50 組成員');
   await expect(card).toContainText('已 7 小時');
   await expect(card).toContainText('30W');
-  await expect(card).toContainText('64% 成員掃到臺灣周邊');
+  await expect(card).toContainText('64% 成員的 8 級風圈進入換算範圍');
   // 機率高的排前面；期間是起報 + 中位數時數
   const first = card.locator('.ai-row').nth(0);
   await expect(first).toContainText('基隆測試站');

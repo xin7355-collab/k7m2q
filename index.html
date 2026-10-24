@@ -1911,7 +1911,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v85';
+const APP_VER = 'v86';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -8022,7 +8022,7 @@ function ensCard() {
     }
   }
   const sl = storms.length ? `<p class="ai-meta">${storms.map(x => `<b>${esc(tcName(x.id))}</b>${match && match.x === x
-      ? `（應為氣象署的「${esc(ty.name || '')}」，起報位置相距 ${match.km} km）` : ''}：${x.pReg}% 成員掃到臺灣周邊`).join('；')}</p>` : '';
+      ? `（應為氣象署的「${esc(ty.name || '')}」，起報位置相距 ${match.km} km）` : ''}：${x.pReg}% 成員的 8 級風圈進入換算範圍（北緯 20–27.5、東經 115–124.5 度，不等於影響站臺）`).join('；')}</p>` : '';
   const withXY = DB.stations.filter(s => IS_LIVE(s) && Number.isFinite(s.lat) && Number.isFinite(s.lng));
   const inR = withXY.map(s => ({ s, a: ensAt(s) })).filter(r => r.a);
   const out = withXY.length - inR.length;
