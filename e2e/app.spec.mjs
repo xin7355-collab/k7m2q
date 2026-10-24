@@ -2457,7 +2457,7 @@ function ecensFile({ init = Date.now() - 19 * 3600000, storms } = {}) {
     mods: '只留已編號颱風、西太平洋、起報後 240 小時內；6 小時一點，座標取到 0.1 度、風速取整數。' };
 }
 
-test('模式系集路徑（ECMWF）：路徑頁有卡片講幾組成員會靠近臺灣；圖層預設關，打開後 5 天內實線、之後淡虛線；出處與修改說明照 CC BY 標', async ({ page }) => {
+test('模式系集路徑（ECMWF）：路徑頁有卡片講幾組成員會靠近臺灣；圖層預設開、地圖下有開關、框選含 10 天線；5 天內實線、之後淡虛線；出處與修改說明照 CC BY 標', async ({ page }) => {
   const init = Date.now() - 19 * 3600000;
   const errors = await bootWith(page, [NEAR], { ty: typhoonFileFull(), ecens: ecensFile({ init }) });
   await goMap(page);
@@ -2475,15 +2475,24 @@ test('模式系集路徑（ECMWF）：路徑頁有卡片講幾組成員會靠近
   await expect(card.locator('.ai-cite')).toContainText('© 2026 European Centre for Medium-Range Weather Forecasts (ECMWF)');
   await expect(card.locator('.ai-cite')).toContainText('CC BY 4.0');
   await expect(card.locator('.ai-cite')).toContainText('修改：只留已編號颱風');
-  // 圖層：預設關；從卡片按鈕打開
+  // 圖層：預設開（使用者 10/25：「沒有看到更久的路徑」）；地圖正下方有開關，關了會記住
   await expect(page.locator('.leaflet-control-layers')).toContainText('模式系集路徑（ECMWF・非官方）');
+  expect(await page.evaluate(() => MAP.hasLayer(ECLAYER))).toBe(true);
+  const tog = page.locator('#tyTl .ec-tog');
+  await expect(tog).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#tyTl .ec-lg')).toContainText('非官方');
+  // 全域框選把 10 天的線框進來：最遠那一點（第 10 天往東北）要在畫面裡
+  expect(await page.evaluate(() => MAP.getBounds().contains([20.5 + 0.5 * 40, 124.5 + 0.3 * 40]))).toBe(true);
+  await tog.click();
   expect(await page.evaluate(() => MAP.hasLayer(ECLAYER))).toBe(false);
+  expect(await page.evaluate(() => localStorage.getItem('galepost.ui.ecmap'))).toBe('0');
+  await expect(page.locator('#tyTl .ec-tog')).toHaveAttribute('aria-pressed', 'false');
   await card.locator('button', { hasText: '在路徑圖上看這些線' }).click();
   expect(await page.evaluate(() => MAP.hasLayer(ECLAYER))).toBe(true);
   const segs = await page.evaluate(() => ECLAYER.getLayers().filter(l => l.getLatLngs().length).map(l => ({ n: l.getLatLngs().length, dash: !!l.options.dashArray, op: l.options.opacity })));
   expect(segs.length).toBe(6);                                   // 3 組 ×（前 5 天＋之後）
   expect(segs.filter(x => !x.dash).every(x => x.n === 21)).toBe(true);   // 0～120 小時 21 點、實線
-  expect(segs.filter(x => x.dash).every(x => x.n === 21 && x.op < 0.3)).toBe(true);   // 120～240 小時、淡虛線
+  expect(segs.filter(x => x.dash).every(x => x.n === 21 && x.op < segs.find(y => !y.dash).op)).toBe(true);   // 120～240 小時、比前 5 天淡的虛線
   await expect(page.locator('.map-lg')).toContainText('模式系集');
   await expect(page.locator('.leaflet-control-attribution')).toContainText('© ECMWF');
   expect(await page.evaluate(() => localStorage.getItem('galepost.ui.ecmap'))).toBe('1');

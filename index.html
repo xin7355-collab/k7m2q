@@ -649,6 +649,13 @@ details.more>.hint{margin-top:0.25rem}
 .ec-p{flex:none;min-width:5.5rem;text-align:right;padding:0.125rem 0.375rem;border-radius:var(--r3);font:700 0.8125rem var(--mono);color:#FFC4E1;
   background:linear-gradient(90deg,rgba(255,196,225,.14) var(--v),transparent var(--v));box-shadow:inset 0 0 0 1px rgba(255,196,225,.3)}
 .ec-row .ai-l b{color:#FFC4E1}
+.ec-lg{display:flex;align-items:center;gap:0.5rem;margin:0 0 0.625rem}
+.ec-lg span{flex:1;min-width:0}
+.ec-lg i{display:inline-block;width:1.25rem;height:0;border-top:1.5px solid #FFC4E1;vertical-align:middle;margin-right:0.375rem}
+.ec-lg b{color:#FFC4E1}
+.ec-tog{flex:none;padding:0.3125rem 0.625rem;border-radius:var(--r);border:1px solid rgba(255,196,225,.45);background:transparent;
+  color:#FFC4E1;font:700 0.75rem var(--sans);min-height:2rem}
+.ec-tog[aria-pressed="true"]{background:rgba(255,196,225,.14)}
 .impact tr.imp-bad td{background:var(--no-d)}
 .imp-ok{font-size:0.6875rem;color:var(--ok)}
 .imp-no{font-size:0.6875rem;color:var(--no);font-weight:700}
@@ -1922,7 +1929,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v87';
+const APP_VER = 'v88';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -7968,7 +7975,7 @@ function mapLegend() {
         ${dot(PH_COL.pre, '未達警報範圍')}${dot(PH_COL.sea, '海警範圍內')}${dot(PH_COL.land, '陸警範圍內')}${dot(PH_COL.out, '已離開')}
         <span style="color:var(--fg4)">（以七級風圈推估，非官方發布）</span>
         ${phaseTimes()}</p>` : '';
-  return phase + `<p class="hint" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.875rem;margin:0 0 0.875rem">
+  return ecLegendLine() + phase + `<p class="hint" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.875rem;margin:0 0 0.875rem">
     <b style="color:var(--fg3)">站臺</b>
     ${dot('var(--ok)', '開機')}${dot('var(--sb)', '待機')}${dot('var(--no)', '關機')}
     <span style="display:inline-flex;align-items:center;gap:0.25rem">
@@ -8109,13 +8116,19 @@ function drawEns() {
    後端（scripts/fetch_ecens.py）把 ECMWF 開放資料（CC BY 4.0）的系集颱風路徑簡化成 data/ecens.json。
    規則：預設不畫（圖層鈕打開）、標非官方、第 6 天以後變淡變虛線、不進待機建議；卡片只講「幾組成員的中心會進到臺灣多近」，
    不講「颱風會怎麼走」——第 7～10 天成員之間常差上千公里。 */
-let ECENS = null, ECLAYER = null, _ecMemo = null;
+let ECENS = null, ECLAYER = null, _ecMemo = null, ECPTS = [];
 async function fetchEcens() {
   const j = await getJSON(new URL('data/ecens.json', location.href).href, 9000, { cache: 'no-cache' }).catch(() => null);
+  const first = !ECENS;
   ECENS = j && j.v === 1 ? j : null;
   _ecMemo = null;
   safeHtml('#tyEc', ecCard, '模式系集');
-  try { drawEcens(); refreshOverlays(); } catch (e) {}
+  try {
+    drawEcens(); refreshOverlays(); renderLegend();
+    ecLegendSync();
+    // 檔比地圖晚到：第一次到的時候重新框，10 天的線才進得了畫面（之後的更新不動使用者自己拉好的視角）
+    if (first && ECENS && MAPFIT && MAP && MAP.hasLayer(ECLAYER)) MAPFIT();
+  } catch (e) {}
   return ECENS;
 }
 const ecInit = () => { const t = ECENS && ECENS.init ? Date.parse(ECENS.init) : NaN; return Number.isFinite(t) ? t : 0; };
@@ -8186,8 +8199,24 @@ function ecCard() {
 // 卡片上的按鈕：打開圖層、捲到地圖
 function ecShow() {
   if (!MAP || !ECLAYER) { toast('有颱風路徑圖時才能畫'); return; }
-  if (!MAP.hasLayer(ECLAYER)) MAP.addLayer(ECLAYER);
+  if (!MAP.hasLayer(ECLAYER)) ecToggle();
   $('#mapWrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// 地圖正下方的開關：圖層鈕藏在右上角下拉裡，手機上找不到（使用者 10/25：「沒有看到更久的路徑」）
+function ecToggle() {
+  if (!MAP || !ECLAYER) return;
+  const on = !MAP.hasLayer(ECLAYER);
+  if (on) { MAP.addLayer(ECLAYER); if (MAPFIT) MAPFIT(); } else MAP.removeLayer(ECLAYER);
+  // 程式開關圖層不會觸發 overlayadd（那只在圖層鈕裡點才有），所以自己記、自己更新圖例
+  try { localStorage.setItem(EC_MAP_KEY, on ? '1' : '0'); } catch (e) {}
+  renderLegend(); ecLegendSync();
+}
+function ecLegendSync() { const tl = $('#tyTl'); if (tl && SERIES) tl.innerHTML = mapLegend() + timelineCard(); }
+function ecLegendLine() {
+  if (!ECENS || !ecInit() || !(ECENS.storms || []).length || !ECLAYER) return '';
+  const on = !!(MAP && MAP.hasLayer(ECLAYER));
+  return `<p class="hint ec-lg"><button type="button" class="ec-tog" aria-pressed="${on}" onclick="ecToggle()">${on ? '✓ ' : ''}10 天系集線</button>
+    <span><i></i>粉白細線＝ECMWF 模式系集，<b>非官方</b>；第 6 天起虛線。官方預報只到 5 天。</span></p>`;
 }
 let EC_RENDER = null;
 function drawEcens() {
@@ -8195,13 +8224,16 @@ function drawEcens() {
   ECLAYER.clearLayers();
   if (!ECENS || !ecInit()) return;
   if (!EC_RENDER) EC_RENDER = L.canvas({ padding: 0.3 });
+  ECPTS = [];
   for (const st of ECENS.storms || []) {
     const me = ecMatch(st), col = me ? '#FFC4E1' : '#9FB3BF';
     for (const tr of st.tracks) {
       const p = ecPts(tr), a = p.filter(x => x.h <= 120), b = p.filter(x => x.h >= 120);
-      // 第 1～5 天：實線；第 6 天以後：淡、虛線（跟官方預報同長的那段才比較可信）
-      if (a.length > 1) L.polyline(a.map(x => [x.lat, x.lng]), { renderer: EC_RENDER, interactive: false, color: col, weight: 1, opacity: me ? .5 : .3 }).addTo(ECLAYER);
-      if (b.length > 1) L.polyline(b.map(x => [x.lat, x.lng]), { renderer: EC_RENDER, interactive: false, color: col, weight: 1, opacity: me ? .22 : .14, dashArray: '3,4' }).addTo(ECLAYER);
+      // 第 1～5 天：實線；第 6 天以後：較淡的虛線（跟官方預報同長的那段才比較可信）
+      if (a.length > 1) L.polyline(a.map(x => [x.lat, x.lng]), { renderer: EC_RENDER, interactive: false, color: col, weight: 1.2, opacity: me ? .6 : .3 }).addTo(ECLAYER);
+      if (b.length > 1) L.polyline(b.map(x => [x.lat, x.lng]), { renderer: EC_RENDER, interactive: false, color: col, weight: 1.2, opacity: me ? .35 : .16, dashArray: '3,4' }).addTo(ECLAYER);
+      // 全域框選要把選中那顆的 10 天線也框進來，不然線一出畫面，看起來就跟沒畫一樣（使用者 10/25 的回報）
+      if (me) for (const x of p) if (x.lat <= 45) ECPTS.push([x.lat, x.lng]);
     }
   }
   // CC BY 4.0：圖上要看得到出處
@@ -8801,11 +8833,12 @@ function initMap() {
   PROBLAYER = L.layerGroup();
   ENSLAYER = L.layerGroup();
   ECLAYER = L.layerGroup();
-  let fOn = true, lOn = true, pOn = false, eOn = false, cOn = false;
+  let fOn = true, lOn = true, pOn = false, eOn = false, cOn = true;
   try {
     fOn = localStorage.getItem(FLOW_KEY) !== '0'; lOn = localStorage.getItem(LTN_MAP_KEY) !== '0';
     pOn = localStorage.getItem(PROB_MAP_KEY) === '1'; eOn = localStorage.getItem(ENS_MAP_KEY) === '1';
-    cOn = localStorage.getItem(EC_MAP_KEY) === '1';
+    // 使用者要的就是看到 5 天以後的走向（10/25 回報「沒有看到更久的路徑」）：預設開，自己關過才記住關
+    cOn = localStorage.getItem(EC_MAP_KEY) !== '0';
   } catch (e) {}
   if (cOn) ECLAYER.addTo(MAP);
   if (fOn) FLOW.addTo(MAP);
@@ -8822,6 +8855,7 @@ function initMap() {
       if (e.layer === ECLAYER) localStorage.setItem(EC_MAP_KEY, on ? '1' : '0');
     } catch (err) {}
     renderLegend();
+    if (e.layer === ECLAYER) ecLegendSync();
   });
   MAP.on('zoomend', declutterLabels);
   MAP.on('moveend', declutterLabels);
@@ -9226,7 +9260,8 @@ function drawMap(ty) {
   const fit = MAPFIT = () => {
     const good = pts.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]));
     const mine = MYPTS.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]));
-    const use = (MAPFOCUS === 'tw' && mine.length) ? mine : good;
+    const ec = ECLAYER && MAP.hasLayer(ECLAYER) ? ECPTS : [];
+    const use = (MAPFOCUS === 'tw' && mine.length) ? mine : good.concat(ec);
     if (use.length > 1) MAP.fitBounds(L.latLngBounds(use).pad(0.28));
     else if (use.length === 1) MAP.setView(use[0], 10);
   };
