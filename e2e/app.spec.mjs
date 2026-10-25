@@ -1430,7 +1430,7 @@ test('貼上比對：列出判讀成功的資料（附原句、點了可改）�
   await goPaste(page);
   // 同一頁：上面是回報稿（目前站臺匯出），下面貼最新訊息；沒有另外的「貼上比對」分頁
   await expect(page.locator('#rpSeg [data-sub="rp:imp"]')).toHaveCount(0);
-  await expect(page.locator('[data-sp="rp:rep"] #out')).toBeVisible();
+  await expect(page.locator('[data-sp="rp:rep"] #outView')).toBeVisible();   // 回報稿（上色檢視；要手改才切成文字框）
   await expect(page.locator('[data-sp="rp:rep"] #impText')).toBeVisible();
   await page.locator('#impText').fill(['青石岬0630完成關機', '報告：松岡二站已於6點40分實施待機，濕度85%'].join('\n'));
   await page.locator('#impGo').click();
@@ -2310,23 +2310,25 @@ test('播報稿：有颱風時開頭加「即時告警」一段；站名、打�
   expect(errors).toEqual([]);
 });
 
-test('回報稿跟上次回報比：標記已回報時存下送出的那份；之後整行新增綠、刪掉紅、只改一部分標黃；站臺有變列出來；一樣就說不用再發', async ({ page }) => {
+test('回報稿跟上次回報比：顏色直接標在稿子上（新增綠、刪掉紅、只改一部分標黃）；複製全文或標記已回報都當比對基準；站臺有變列出來；一樣就說不用再發', async ({ page }) => {
   const H = 3600000, now = Date.now();
   const S = (id, name, status, at) => ({ ...NEAR, id, name, status, at, lat: 25 + id.length * 0.01, lng: 121.5 });
   const errors = await bootWith(page, [S('a', '甲站', 'on', now - 30 * H), S('bb', '乙站', 'off', now - 5 * H), S('ccc', '丙站', 'standby', now - 4 * H)]);
   await page.locator('.nav button[data-p="rp"]').click();
   await page.locator('#tplSeg button[data-t="B"]').click();
   await expect(page.locator('#rpDiff .rp-prog')).toContainText('復機進度1 / 3 開機・待機 1・關機 1');
-  await expect(page.locator('#rpDiff')).toContainText('按「標記已回報」，下次這裡會標出');
+  // 使用者 10/25「怎麼都沒看到」：說明就在稿子正上方，不在畫面外
+  await expect(page.locator('#outCmp')).toContainText('按「複製全文」或「標記已回報」後');
+  await expect(page.locator('#outView')).toBeVisible();
+  await expect(page.locator('#out')).toBeHidden();
   await page.locator('#markSent').click();
   expect(await page.evaluate(() => [!!DB.sent.text, DB.sent.st.bb.status])).toEqual([true, 'off']);
-  await expect(page.locator('#rpDiff .rp-diff summary')).toContainText('一模一樣，不用再發');
+  await expect(page.locator('#outCmp')).toContainText('一模一樣，不用再發');
   // 乙站從關機改待機
   await page.evaluate(() => { const s = DB.stations[1]; s.status = 'standby'; s.at = Date.now() - 600000; save(); generate(); });
-  const d = page.locator('#rpDiff .rp-diff');
-  await expect(d).toHaveAttribute('open', '');
-  await expect(d.locator('summary')).toContainText('改 2・新增 0・刪掉 1');
-  await expect(d.locator('.rp-moved')).toContainText('乙站 關機 → 待機');
+  await expect(page.locator('#outCmp')).toContainText('標記已回報的那份比：改 2・新增 0・刪掉 1');
+  await expect(page.locator('#rpDiff .rp-moved')).toContainText('乙站 關機 → 待機');
+  const d = page.locator('#outView');
   const mod = d.locator('.df .df-mod');
   await expect(mod.nth(0).locator('mark.df-chg')).toHaveText('2');                // 「待機站臺計1處」→「計2處」只標數字
   await expect(mod.nth(0).locator('del.df-was')).toHaveText('1');
@@ -2334,6 +2336,20 @@ test('回報稿跟上次回報比：標記已回報時存下送出的那份；�
   await expect(mod.nth(1).locator('mark.df-chg')).toContainText('實施待');          // 「機。」前後一樣，不標
   await expect(mod.nth(1).locator('del.df-was')).toContainText('完成關');
   await expect(d.locator('.df .df-del')).toHaveText(['一、尚未開機岸際雷達計1處：']);     // 尚未開機那一段整段不見
+  // 複製出去的是原文，不帶顏色、不帶刪掉的行
+  expect(await page.evaluate(() => $('#out').value)).not.toContain('尚未開機');
+  // 複製全文也記成基準（起算時間不動）：複製後再看就是一模一樣
+  const since0 = await page.evaluate(() => DB.since);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.locator('#copyOut').click();
+  await expect(page.locator('#outCmp')).toContainText('複製的那份一模一樣');
+  expect(await page.evaluate(() => DB.since)).toBe(since0);
+  // 手改：切成文字框，改的字即時上色
+  await page.locator('#editOut').click();
+  await expect(page.locator('#out')).toBeVisible();
+  await page.locator('#out').fill((await page.locator('#out').inputValue()) + '\n補充：測試。');
+  await page.locator('#editOut').click();
+  await expect(page.locator('#outView .df-add')).toHaveText(['補充：測試。']);
   expect(errors).toEqual([]);
 });
 
@@ -2518,5 +2534,85 @@ test('模式系集：檔還沒產生就不出現；抓不到講原因；西太�
   await expect(page.locator('#tyEc .ec-card')).toContainText('ECMWF 系集路徑抓不到：氣象署有颱風');
   await page.evaluate(d => { ECENS = d; renderTyphoon({}); }, ecensFile({ storms: [] }));
   await expect(page.locator('#tyEc .ec-card')).toContainText('西太平洋沒有已編號的颱風');
+  expect(errors).toEqual([]);
+});
+
+/* ── v89：解除管制全部開機、返回上一步、站臺類別顏色（使用者 10/25）── */
+test('解除管制・全部開機：一次把待機／關機的站改開機，每站記一筆時序、回報列已復機、可選同時結束管制；返回上一步整份退回', async ({ page }) => {
+  const H = 3600000, now = Date.now();
+  // 丙站一直開著（開機時間在管制開始前），不該算進「已復機」
+  const S = (id, name, status, h = 3) => ({ ...NEAR, id, name, status, at: now - h * H, lat: 25 + id.length * 0.01, lng: 121.5 });
+  const errors = await bootWith(page, [S('a', '甲站', 'off'), S('bb', '乙站', 'standby'), S('ccc', '丙站', 'on', 10)],
+    { db: { ctl: { start: now - 5 * H, end: 0, ty: '測試' }, since: now - 5 * H } });
+  await toEq(page);
+  const btn = page.locator('.ao-btn');
+  await expect(btn).toHaveText('解除管制・全部開機（2）');
+  await btn.click();
+  await expect(page.locator('#shBody')).toContainText('2 站改成開機（待機 1、關機 1）');
+  await expect(page.locator('#shBody')).toContainText('關機的 1 站要到現場才能復機');
+  await page.locator('#ao_ok').click();
+  const r = await page.evaluate(() => ({
+    st: DB.stations.map(s => s.status).join(), logs: DB.log.filter(e => e.src === 'allOn').map(e => e.name + e.from).join(),
+    ended: !!DB.ctl.end }));
+  expect(r).toEqual({ st: 'on,on,on', logs: '甲站off,乙站standby', ended: true });
+  await expect(page.locator('.ao-btn')).toHaveCount(0);                  // 都開了就不再出現
+  // 回報：甲、乙列在已復機
+  await page.locator('.nav button[data-p="rp"]').click();
+  await expect(page.locator('#outView')).toContainText('已復機站臺2處');
+  // 返回上一步：狀態、時序、管制起訖一起退回
+  await expect(page.locator('#p-rp [data-undo-last]')).toContainText('全部開機（2 站）');
+  await page.locator('#p-rp [data-undo-last]').click();
+  const b = await page.evaluate(() => ({ st: DB.stations.map(s => s.status).join(), n: DB.log.filter(e => e.src === 'allOn').length, ended: !!DB.ctl.end }));
+  expect(b).toEqual({ st: 'off,standby,on', n: 0, ended: false });
+  await expect(page.locator('#outView')).not.toContainText('已復機站臺2處');
+  await expect(page.locator('#p-rp [data-undo-last]')).toBeDisabled();   // 只有一步，退完就沒了
+  expect(errors).toEqual([]);
+});
+
+test('返回上一步：開關機、套用比對、手改過的回報稿都退得回去；按鈕寫出要退的是哪個動作', async ({ page }) => {
+  const now = Date.now();
+  const S = (id, name, status) => ({ ...NEAR, id, name, status, at: now - 7200000, lat: 25 + id.length * 0.01, lng: 121.5 });
+  const errors = await bootWith(page, [S('a', '甲站', 'on'), S('bb', '乙站', 'on')]);
+  await toEq(page);
+  await page.locator('.st[data-id="a"] [data-act="standby"]').click();
+  await page.locator('#at_ok').click();
+  await page.locator('.nav button[data-p="rp"]').click();
+  const u = page.locator('#p-rp [data-undo-last]');
+  await expect(u).toContainText('甲站 改待機');
+  // 手改回報稿後再切範本：退回時字也回來
+  await page.locator('#editOut').click();
+  await page.locator('#out').fill('手改的稿子');
+  await page.locator('#editOut').click();
+  await page.locator('#tplSeg button[data-t="B"]').click();
+  await expect(u).toContainText('切換到續報');
+  await u.click();
+  expect(await page.evaluate(() => [DB.tpl, $('#out').value])).toEqual(['A', '手改的稿子']);
+  await expect(u).toContainText('甲站 改待機');
+  await u.click();
+  expect(await page.evaluate(() => DB.stations[0].status)).toBe('on');
+  expect(await page.evaluate(() => DB.log.length)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('站臺類別顏色：每個類別預設不同色（避開狀態的綠琥珀紅），站臺卡標籤與地圖圖標外圈跟著類別；設定裡可改', async ({ page }) => {
+  const st = [{ ...NEAR, id: 'r', name: '雷達站', type: 't1' }, { ...NEAR, id: 'i', name: '紅外線站', type: 't3', lat: NEAR.lat + 0.2 }];
+  const errors = await bootWith(page, st, { ty: typhoonFileFull() });
+  await toEq(page);
+  const c1 = await page.locator('.st[data-id="r"] em.tylb').evaluate(e => getComputedStyle(e).color);
+  const c3 = await page.locator('.st[data-id="i"] em.tylb').evaluate(e => getComputedStyle(e).color);
+  expect(c1).not.toBe(c3);
+  const pal = await page.evaluate(() => DB.types.map(typeColor));
+  expect(new Set(pal).size).toBe(pal.length);
+  for (const c of pal) expect(['#4FD39A', '#F0A63A', '#FF5247']).not.toContain(c.toUpperCase());
+  // 地圖：圖標外圈＝類別色、填色＝狀態；圖例列出類別
+  await goMap(page);
+  const pin = await page.evaluate(() => [...document.querySelectorAll('.st-pin')].map(e => e.style.getPropertyValue('--tc')));
+  expect(new Set(pin).size).toBe(2);
+  await expect(page.locator('#tyTl')).toContainText('類別（外圈）');
+  // 設定 › 類別顏色：改了站臺卡跟著變
+  await page.evaluate(() => { openTypes(); });
+  const inp = page.locator('#shBody input[type="color"][data-t="t1"]');
+  await inp.evaluate(e => { e.value = '#123456'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  expect(await page.evaluate(() => typeColor(DB.types[0]))).toBe('#123456');
   expect(errors).toEqual([]);
 });

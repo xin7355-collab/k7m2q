@@ -348,16 +348,19 @@ main.peek-back{transition:transform .22s cubic-bezier(.2,.9,.3,1)}
    它跟旁邊那些會進通報的卡片不是同一類東西,不該長得一樣。 */
 .st.aux{border-color:var(--aux);box-shadow:inset 0 0 0 1px var(--aux-d)}
 .st.aux .st-n em.auxlb{border-color:var(--aux);color:var(--aux);background:var(--aux-d)}
+.st-n em.tylb{color:var(--tc);border-color:color-mix(in srgb,var(--tc) 60%,transparent);background:color-mix(in srgb,var(--tc) 12%,transparent)}
+.ty-dot{display:inline-block;width:0.625rem;height:0.625rem;border-radius:50%;flex:0 0 auto;
+  background:transparent;box-shadow:inset 0 0 0 2.5px var(--tc);margin-right:0.25rem;vertical-align:-1px}
 
 /* 地圖上的站臺圖標。顏色講狀態（開機／待機／關機／未建置）,
    符號講類別（雷達／紅外線／中繼／其他）—— 兩件事分兩個通道,
    才不會為了同時表達而變成十六種看不懂的顏色。 */
 .st-pin{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;
   justify-content:center;font-size:12px;line-height:1;border:2px solid #08131A;
-  box-shadow:0 0 0 1.5px currentColor,0 1px 4px rgba(0,0,0,.6);background:currentColor}
+  box-shadow:0 0 0 2.5px var(--tc,currentColor),0 1px 4px rgba(0,0,0,.6);background:currentColor}
 .st-pin i{font-style:normal;filter:drop-shadow(0 0 1px rgba(0,0,0,.9))}
 .st-pin.plan{background:transparent;border-style:dashed;border-color:currentColor;
-  box-shadow:none;opacity:.85}
+  box-shadow:0 0 0 1.5px var(--tc,transparent);opacity:.85}
 .st-lb{font-family:var(--mono);font-size:10px;line-height:1.1;white-space:nowrap;
   color:#EAF4F8;text-shadow:0 0 3px #08131A,0 0 6px #08131A;text-align:center;font-weight:700}
 .st-alert{padding:0.5rem 0.8125rem;font-size:0.7812rem;display:flex;gap:0.5rem;align-items:flex-start;
@@ -531,7 +534,6 @@ details.more>.hint{margin-top:0.25rem}
 .rp-prog>span:first-child{margin-right:0.5rem}
 .rp-prog b{font-family:var(--mono);font-size:0.9375rem}
 .rp-go{margin-top:0.25rem;color:var(--fg2)}
-.rp-diff{margin-top:0.625rem}
 .rp-moved{font-size:0.8125rem;line-height:1.7;color:var(--fg2);margin:0.25rem 0 0.5rem}
 .df{font-size:0.8125rem;line-height:1.7;border-top:1px solid var(--edge);padding-top:0.375rem}
 .df-l{padding:0 0.375rem;color:var(--fg3);white-space:pre-wrap;overflow-wrap:anywhere}
@@ -1191,6 +1193,17 @@ details.more>.hint{margin-top:0.25rem}
   border-bottom:2px solid transparent;margin-bottom:-1px;min-height:2.75rem}
 .seg button[aria-pressed="true"]{color:var(--acc);border-bottom-color:var(--acc);
   text-shadow:0 0 10px rgba(111,211,255,.45);background:linear-gradient(0deg,rgba(111,211,255,.09),transparent 80%)}
+.out-view{min-height:auto!important;overflow-wrap:anywhere}
+.out-view .df{font:inherit;line-height:inherit;border-top:0;padding-top:0}
+.out-view .df-l{padding:0 0.25rem;margin:0 -0.25rem}
+.out-cmp{margin:0 0 0.5rem;font-size:0.8125rem;color:var(--fg2);display:flex;flex-wrap:wrap;gap:0.25rem 0.625rem;align-items:center}
+.out-cmp .oc-none,.out-cmp .oc-note{color:var(--fg4);font-size:0.75rem}
+.out-cmp .oc-same{color:var(--ok)}
+.out-cmp .oc-k{display:inline-flex;gap:0.375rem}
+.undo-btn{display:flex;flex-direction:column;align-items:center;line-height:1.25}
+.undo-btn small,.ao-row [data-undo-last] small{font-size:0.6875rem;color:var(--fg4);max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ao-row{margin:-0.25rem 0 0.75rem}
+.ao-btn{border-color:var(--ok);color:var(--ok)}
 .out{width:100%;min-height:44vh;background:var(--bg2);border:1px solid var(--edge2);
   border-radius:var(--r);padding:0.9375rem;font-family:var(--mono);font-size:0.8438rem;
   line-height:2.05;white-space:pre-wrap;resize:vertical;color:var(--fg)}
@@ -1349,12 +1362,20 @@ details.more>.hint{margin-top:0.25rem}
     <button data-t="A" aria-pressed="true">初報　關（待）機</button>
     <button data-t="B" aria-pressed="false">續報　復機管制</button>
   </div>
-  <!-- 產出結果放最上面：打開這頁就是要複製它。選項很少改，收起來。 -->
-  <textarea class="out" id="out" spellcheck="false" aria-label="回報稿"></textarea>
+  <!-- 產出結果放最上面：打開這頁就是要複製它。選項很少改，收起來。
+       使用者 10/25：「比對、不同顏色區別怎麼都沒看到」——以前顏色在稿子下面另一張卡、還要先按「標記已回報」才出現，
+       手機一個畫面看不到。現在稿子本身就上色（跟上次複製或回報的那份比），要手改才切成文字框。 -->
+  <div class="out-cmp" id="outCmp"></div>
+  <div class="out out-view" id="outView" aria-label="回報稿"></div>
+  <textarea class="out" id="out" spellcheck="false" aria-label="回報稿（編輯）" hidden></textarea>
   <div class="btnrow" style="margin-top:0.625rem">
     <button class="btn pri" id="copyOut">複製全文</button>
     <button class="btn" id="markSent">標記已回報</button>
     <button class="btn" id="regen">重新產生</button>
+  </div>
+  <div class="btnrow" style="margin-top:0.5rem">
+    <button class="btn undo-btn" data-undo-last onclick="undoLast()" disabled>↶ 返回上一步</button>
+    <button class="btn" id="editOut" aria-pressed="false">✎ 手改文字</button>
   </div>
   <!-- 跟上次回報比（按「標記已回報」時存的那份）：改到的地方上色；復機進度與可評估復機 -->
   <div id="rpDiff"></div>
@@ -1929,7 +1950,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v88';
+const APP_VER = 'v89';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -4146,6 +4167,15 @@ const ICON = {
   radar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 12 20 7"/><path d="M4.9 19.1A10 10 0 1 1 19.1 4.9"/><path d="M8.5 15.5a5 5 0 1 1 7-7"/></svg>',
 };
 const typeOf = id => DB.types.find(t => t.id === id) || DB.types[0] || { id: '', label: '未分類', report: '未分類' };
+/* 類別顏色（使用者 10/25：每個種類站臺顏色要有所區別）。
+   狀態仍然是「填色」（開機綠、待機琥珀、關機紅）——那是要做決定的那件事，不能被類別蓋掉；
+   類別只用外圈、標籤框線的顏色區分。所以預設色盤避開綠、琥珀、紅，免得外圈被看成狀態。 */
+const TYPE_PAL = ['#5BC8F5', '#A98BFF', '#FF8AD8', '#7FA8FF', '#E6EEF2', '#C9A27A', '#4FD1C5', '#D6A2FF'];
+const typeColor = t => {
+  if (t && /^#[0-9a-f]{6}$/i.test(t.color || '')) return t.color;
+  const i = Math.max(0, DB.types.findIndex(x => x.id === (t && t.id)));
+  return TYPE_PAL[i % TYPE_PAL.length];
+};
 
 function bfBadge(bf, size) {
   if (bf == null) return '';
@@ -4325,6 +4355,7 @@ function renderStations() {
   const rail = renderRail();
   $('#eqLog').innerHTML = ctlCard() + (rail ? `<div class="sec"><h2>狀態變更時序</h2>
     <span class="hint" style="margin-left:auto">點一筆可修改</span></div>${rail}` : '');
+  syncUndo();
 }
 const SORT_LABEL = {
   ns: '由北至南', custom: '自訂順序', type: '類別',
@@ -4387,7 +4418,7 @@ function stationCard(s, imp, i, total) {
       <i class="st-i" style="background:${aux ? 'var(--aux)' : S_COL[s.status]}"></i>
       ${wr.bf != null ? bfBadge(wr.bf, 'md') : ''}
       <div class="st-b">
-        <div class="st-n"><span class="nm">${esc(s.name)}</span><em>${esc(t.label)}</em>${(u => u.k
+        <div class="st-n"><span class="nm">${esc(s.name)}</span><em class="tylb" style="--tc:${typeColor(t)}">${esc(t.label)}</em>${(u => u.k
           ? `<em class="unitlb${u.guess ? ' guess' : ''}" title="${esc(unitLabel(u.k))}${u.guess ? '：邊界不確定，到編輯確認' : ''}">${esc(u.k)}${
             u.guess ? `${u.alt ? '／' + esc(u.alt.k) : ''} 待確認` : ''}</em>` : '')(unitOf(s))}${aux
           ? '<em class="auxlb" title="自用監看：不進交接通報、不計入戰力">自用監看</em>' : ''}</div>
@@ -4409,6 +4440,81 @@ function stationCard(s, imp, i, total) {
     </div></article>`;
 }
 
+/* ── 返回上一步 ─────────────────────────────────────────────
+   使用者 10/25：回報要有「返回上一次動作」。會改站臺或回報的動作（開關機、套用比對、標記已回報、重新產生、
+   切換初報／續報、全部開機、開始／結束管制）做之前先存一份快照，按一下整份退回去——
+   以前只能到時序一筆一筆刪，「套用比對」「全部開機」這種一次改很多站的就退不回去。
+   快照放 sessionStorage：同一次打開 App 內有效；關掉重開就清空，不會在下一場颱風退回到舊資料。 */
+const UNDO_KEY = 'galepost.undo', UNDO_MAX = 15;
+let UNDO = (() => { try { return JSON.parse(sessionStorage.getItem(UNDO_KEY) || '[]'); } catch (e) { return []; } })();
+function snap(label) {
+  const out = document.getElementById('out');
+  UNDO.push({ label, at: Date.now(), out: out ? out.value : '',
+    db: JSON.stringify({ stations: DB.stations, log: DB.log, since: DB.since, sent: DB.sent || null,
+      tpl: DB.tpl, ctl: DB.ctl || null, events: DB.events || [] }) });
+  while (UNDO.length > UNDO_MAX) UNDO.shift();
+  try { sessionStorage.setItem(UNDO_KEY, JSON.stringify(UNDO)); } catch (e) {}
+  syncUndo();
+}
+function undoLast() {
+  const u = UNDO.pop();
+  if (!u) return toast('沒有可以返回的動作');
+  try { sessionStorage.setItem(UNDO_KEY, JSON.stringify(UNDO)); } catch (e) {}
+  Object.assign(DB, JSON.parse(u.db));
+  save(); syncForm(); renderStations(); renderTyphoon({}); generate();
+  // 手改過的回報稿也要回來：generate() 會照站臺重寫，所以寫完再放回當時框裡的字
+  const out = document.getElementById('out');
+  if (out && u.out) { out.value = u.out; renderOutView(); }
+  syncUndo();
+  toast(`已返回到「${u.label}」之前`);
+}
+function syncUndo() {
+  const u = UNDO[UNDO.length - 1];
+  document.querySelectorAll('[data-undo-last]').forEach(b => {
+    b.disabled = !u;
+    b.innerHTML = u ? `↶ 返回上一步<small>${esc(u.label)}</small>` : '↶ 返回上一步<small>沒有動作可返回</small>';
+  });
+}
+
+/* ── 解除管制：全部開機 ─────────────────────────────────────
+   使用者 10/25：颱風解除管制時，一個鈕讓站臺全部開機（以前要一站一站按，十幾站各問一次時間）。
+   每一站照樣記一筆時序（回報「已復機」才列得出來），時間統一用這裡填的那個；按錯就「返回上一步」。 */
+function allOn() {
+  const list = DB.stations.filter(s => IS_LIVE(s) && s.status !== 'on');
+  if (!list.length) return toast('站臺都已經是開機');
+  const nSb = list.filter(s => s.status === 'standby').length, nOff = list.length - nSb;
+  openSheet(ctlOn() ? '解除管制：全部開機' : '全部開機', `
+    <p style="margin:0 0 0.625rem">${list.length} 站改成開機（${[nSb ? `待機 ${nSb}` : '', nOff ? `關機 ${nOff}` : ''].filter(Boolean).join('、')}）：</p>
+    <p class="hint" style="margin:0 0 0.875rem">${list.map(s => `<span class="stn">${esc(s.name)}</span>`).join('、')}</p>
+    ${nOff ? `<div class="msg w" style="margin-bottom:0.875rem">關機的 ${nOff} 站要到現場才能復機，確定都已經開好了再按。</div>` : ''}
+    <label class="fld"><span class="lb">開機時間</span>
+      <input type="datetime-local" id="ao_at" value="${toInput(Date.now())}">
+      <span class="sub">回報「已復機」會寫這個時間；個別站時間不同，之後在時序裡改那一筆。</span></label>
+    ${ctlOn() ? `<div class="sw" style="margin-bottom:0.875rem"><div class="sw-t"><b>同時結束本次管制</b><small>時序停在這裡，之後的變更不再計入</small></div>
+      <button class="tgl" id="ao_end" aria-pressed="true"></button></div>` : ''}
+    <div class="btnrow"><button class="btn pri" id="ao_ok" style="flex:1">全部開機</button>
+      <button class="btn" id="ao_no" style="flex:1">取消</button></div>`,
+    () => {
+      const tg = $('#ao_end');
+      if (tg) tg.onclick = () => tg.setAttribute('aria-pressed', String(tg.getAttribute('aria-pressed') !== 'true'));
+      $('#ao_no').onclick = closeSheet;
+      $('#ao_ok').onclick = () => {
+        const t = fromInput($('#ao_at').value);
+        if (t > Date.now() + 5 * 60000) return toast('時間在未來，請確認');
+        const end = !!(tg && tg.getAttribute('aria-pressed') === 'true');
+        snap(`全部開機（${list.length} 站）`);
+        for (const s of list) {
+          DB.log.push({ id: uid(), t: Date.now(), sid: s.id, name: s.name, from: s.status, to: 'on',
+            prevAt: s.at, prevHum: s.hum ?? null, at: t, src: 'allOn' });
+          s.status = 'on'; s.at = t; s.hum = null; s.mt = Date.now();
+        }
+        if (end && ctlOn()) DB.ctl.end = Date.now();
+        save(); closeSheet(); renderStations(); renderTyphoon({}); generate();
+        toast(`已全部開機 ${list.length} 站${end ? '，本次管制結束' : ''}（按錯可「返回上一步」）`);
+      };
+    });
+}
+
 /* ── 本次管制 ──────────────────────────────────────────────
    「還沒開始管制卻已經有一整排開機紀錄」的原因:
    時序以前是拿每個站臺的 `at`（＝「從什麼時候開始是這個狀態」）去畫,
@@ -4423,6 +4529,7 @@ function stationCard(s, imp, i, total) {
    兩者本來就是同一件事的兩個名字。                                   */
 const ctlOn = () => !!(DB.ctl && DB.ctl.start && !DB.ctl.end);
 function startCtl() {
+  snap('開始管制');
   DB.ctl = { start: Date.now(), end: 0, ty: (DB.ty.name || '') };
   DB.since = DB.ctl.start;
   save(); renderStations(); generate();
@@ -4430,6 +4537,7 @@ function startCtl() {
 }
 function endCtl() {
   if (!confirm('結束本次管制？時序會保留這段期間的紀錄，之後的變更不再計入。')) return;
+  snap('結束管制');
   DB.ctl.end = Date.now();
   save(); renderStations(); generate();
   toast('已結束管制');
@@ -4438,12 +4546,18 @@ function endCtl() {
    開始管制是颱風來時的第一個動作,不能藏在第三個子頁裡。 */
 function ctlLine() {
   const c = DB.ctl || {};
+  const down = DB.stations.filter(s => IS_LIVE(s) && s.status !== 'on').length;
+  // 有站還沒開機就給「全部開機」：管制中叫「解除管制・全部開機」，剛按錯要退回也在這裡
+  const u = UNDO[UNDO.length - 1];
+  const tail = (down ? `<button class="btn sm ao-btn" onclick="allOn()">${ctlOn() ? '解除管制・' : ''}全部開機（${down}）</button>` : '')
+    + (u && /^全部開機/.test(u.label) ? `<button class="btn sm" data-undo-last onclick="undoLast()"></button>` : '');
+  const row = tail ? `<div class="btnrow ao-row">${tail}</div>` : '';
   if (ctlOn()) {
     return `<button type="button" class="ctlbar on" data-sub="eq:log"><i></i><b>管制中${c.ty ? '　' + esc(c.ty) : ''}</b>
-      <span>自 ${fmtShort(c.start)} 起 · ${Math.floor((Date.now() - c.start) / 3600000)} 小時</span><em>時序 ›</em></button>`;
+      <span>自 ${fmtShort(c.start)} 起 · ${Math.floor((Date.now() - c.start) / 3600000)} 小時</span><em>時序 ›</em></button>${row}`;
   }
   return `<div class="ctlbar"><b>${c.end ? '管制已結束' : '尚未開始管制'}</b>
-    <button class="btn pri sm" onclick="startCtl()">開始管制</button></div>`;
+    <button class="btn pri sm" onclick="startCtl()">開始管制</button></div>${row}`;
 }
 function ctlCard() {
   const c = DB.ctl || {};
@@ -4580,6 +4694,7 @@ function askOff(id) {
 /* at：已經在確認視窗問過時間（關機）就直接用,不再跳一次時間視窗 */
 function setStatus(id, to, at) {
   const s = DB.stations.find(x => x.id === id); if (!s) return;
+  snap(`${s.name} 改${S_LABEL[to]}`);
   const from = s.status;
   /* prevAt／prevHum：按錯要能「整個退回去」。只把狀態改回來的話,
      站臺的 at 已經被蓋成剛剛,回報就會多一筆「完成開機」—— 誤按一次、通報錯一行。 */
@@ -4657,6 +4772,7 @@ function editLog(id) {
         const to = $('#le_to').value, at = fromInput($('#le_at').value), hv = $('#le_hum').value.trim();
         if (at > Date.now() + 5 * 60000) return toast('時間在未來，請確認');
         const h = hv === '' || to === 'on' ? null : clamp(+hv, 0, 100);
+        snap(`修改 ${e.name} 的紀錄`);
         e.to = to; e.at = at; e.hum = h; e.edited = Date.now();
         if (latest && st) { st.status = to; st.at = at; st.hum = h; st.mt = Date.now(); }
         save(); closeSheet(); renderStations(); renderTyphoon({}); generate();
@@ -4682,6 +4798,7 @@ function dropLog(id, quiet) {
       : `刪除「${e.name}　${S_VERB[e.to] || ''}　${fmtShort(e.at)}」這筆紀錄？\n只刪時序，${e.name} 目前的狀態不變。`;
     if (!confirm(msg)) return;
   }
+  snap(`刪除 ${e.name} 的紀錄`);
   DB.log.splice(i, 1);
   if (revert && st) {
     st.status = e.from;
@@ -7965,6 +8082,14 @@ function phaseTimes() {
 
 /* 地圖下方的說明：線條符號已經在地圖左上角的圖例裡,這裡只講兩件圖例放不下的事——
    預報路徑的顏色代表什麼（附四個轉換時間）,以及站臺圖示的顏色。 */
+// 類別圖例：外圈顏色＝類別（地圖上填色是狀態）
+function typeLegend() {
+  const used = DB.types.filter(t => DB.stations.some(x => x.type === t.id && Number.isFinite(x.lat)));
+  if (used.length < 2) return '';
+  return `<p class="hint" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.875rem;margin:-0.375rem 0 0.875rem">
+    <b style="color:var(--fg3)">類別（外圈）</b>${used.map(t => `<span style="display:inline-flex;align-items:center;gap:0.3125rem">
+      <i class="ty-dot" style="--tc:${typeColor(t)}"></i>${esc(t.label)}</span>`).join('')}</p>`;
+}
 function mapLegend() {
   const dot = (c, t) => `<span style="display:inline-flex;align-items:center;gap:0.25rem">
     <i style="width:0.625rem;height:0.625rem;border-radius:50%;background:${c};
@@ -7982,7 +8107,7 @@ function mapLegend() {
       <i style="width:0.625rem;height:0.625rem;border-radius:50%;border:1.5px dashed var(--fg4);
         display:inline-block;flex:0 0 auto"></i>未建置</span>
     <span style="color:var(--fg4)">右上角圖層鈕可切換底圖、逐類開關站臺、風場與落雷</span>
-  </p>`;
+  </p>${typeLegend()}`;
 }
 
 /* ═══ AI 系集（Weather Lab，實驗）══════════════════════════
@@ -8878,7 +9003,7 @@ function typeIcon(t) {
 }
 const stPin = (s, t) => L.divIcon({
   className: '', iconSize: [22, 22], iconAnchor: [11, 11],
-  html: `<div class="st-pin${s.status === 'plan' ? ' plan' : ''}" style="color:${S_COL[s.status]}"><i>${typeIcon(t)}</i></div>`,
+  html: `<div class="st-pin${s.status === 'plan' ? ' plan' : ''}" style="color:${S_COL[s.status]};--tc:${typeColor(t)}"><i>${typeIcon(t)}</i></div>`,
 });
 // 標籤要落在圖標下方,不能壓在圖標上 —— 圖標高 22px,中心錨定,
 // 所以下緣在 +11,標籤從 +14 開始才不會被蓋住。
@@ -8930,7 +9055,7 @@ function refreshOverlays() {
   if (STCTRL) { MAP.removeControl(STCTRL); STCTRL = null; }
   const ov = {};
   for (const [k, g] of Object.entries(STLAYERS)) {
-    ov[`${typeIcon(typeOf(k))} ${typeOf(k).label}`] = g;
+    ov[`<i class="ty-dot" style="--tc:${typeColor(typeOf(k))}"></i>${typeIcon(typeOf(k))} ${esc(typeOf(k).label)}`] = g;
   }
   // 風場（推估）與落雷（實測）跟站臺類別放在同一個圖層鈕裡：選項都收在一個下拉,不另排一列按鈕
   if (FLOW) ov['風場流線（推估）'] = FLOW;
@@ -9355,10 +9480,11 @@ function generate() {
   $('#out').value = txt;
   renderRpEvents();
   renderRpDiff(txt);
+  syncUndo();
 }
 
 /* ── 跟上次回報比（使用者：要不要比、怎麼比,改到的地方用顏色分出來）──────────────
-   「標記已回報」時把當時送出的回報稿（含手改過的字）與各站狀態存成 DB.sent；之後每次產生都拿來比：
+   「複製全文」或「標記已回報」時把當時送出的回報稿（含手改過的字）與各站狀態存成 DB.sent；之後每次產生都拿來比，顏色直接畫在稿子上（renderOutView）：
    整行新增綠、整行刪掉紅色刪除線、同一行只改一部分（時間、狀態）就只把改到的字標黃,旁邊附原本的字。
    比對時忽略項次編號——前面多一站,後面每一行的「2.」「3.」都會變,那不是內容改了。 */
 const lineKey = l => String(l).replace(/^\s*(?:\d+|[一二三四五六七八九十]+)\s*[.、．]\s*/, '').trim();
@@ -9414,26 +9540,39 @@ function renderRpDiff(txt) {
     n.off ? `<span class="c-no">・關機 ${n.off}</span>` : ''}${go.length ? `<div class="rp-go">可評估復機：${go.map(x => `<span class="stn">${esc(x.name)}</span>`).join('、')}
       <button type="button" class="act" onclick="go('eq');setSub('eq','imp')">看預判 ›</button></div>` : ''}</div>`;
   const S = DB.sent;
+  // 站臺狀態有變的（上次回報 → 現在）
+  const moved = S && S.st ? live.filter(x => S.st[x.id] && (S.st[x.id].status !== x.status || S.st[x.id].at !== x.at))
+    .map(x => `<span class="stn">${esc(x.name)}</span> ${S_LABEL[S.st[x.id].status] || ''} → <b style="color:${S_COL[x.status]}">${S_LABEL[x.status]}</b> ${fmtShort(x.at).replace(/\(.\)/, '')}`) : [];
+  box.innerHTML = prog + (moved.length ? `<div class="rp-moved">站臺有變（跟上次比）：${moved.join('；')}</div>` : '');
+  renderOutView();
+}
+
+/* 回報稿的上色檢視：跟上次「複製全文」或「標記已回報」的那份逐行比，新增綠、刪掉紅刪除線、只改一部分的行把改到的字標黃並附舊字。
+   複製出去的仍是文字框裡的原文（顏色只在畫面上）。 */
+function renderOutView() {
+  const v = document.getElementById('outView'), head = document.getElementById('outCmp');
+  if (!v || !head) return;
+  const txt = $('#out').value, S = DB.sent;
+  const plain = () => txt.split('\n').map(l => `<div class="df-l">${esc(l) || '&nbsp;'}</div>`).join('');
   if (!S || !S.text) {
-    box.innerHTML = prog + '<p class="hint" style="margin:0.5rem 0 0">送出後按「標記已回報」，下次這裡會標出跟上次回報比改了哪裡。</p>';
+    v.innerHTML = `<div class="df">${plain()}</div>`;
+    head.innerHTML = `<span class="oc-none">還沒有上一份可比。按「複製全文」或「標記已回報」後，之後這裡會用顏色標出改了哪裡。</span>`;
     return;
   }
-  const ops = diffLines(String(S.text).split('\n'), String(txt).split('\n'));
+  const ops = diffLines(String(S.text).split('\n'), txt.split('\n'));
   const c = { '+': 0, '-': 0, '~': 0 }; ops.forEach(o => { if (c[o[0]] != null) c[o[0]]++; });
-  // 站臺狀態有變的（上次回報 → 現在）
-  const moved = live.filter(x => S.st && S.st[x.id] && (S.st[x.id].status !== x.status || S.st[x.id].at !== x.at))
-    .map(x => `<span class="stn">${esc(x.name)}</span> ${S_LABEL[S.st[x.id].status] || ''} → <b style="color:${S_COL[x.status]}">${S_LABEL[x.status]}</b> ${fmtShort(x.at).replace(/\(.\)/, '')}`);
   const same = !c['+'] && !c['-'] && !c['~'];
-  const lines = ops.map(([k, a, b]) => k === '=' ? `<div class="df-l">${esc(a) || '&nbsp;'}</div>`
+  v.innerHTML = `<div class="df">${ops.map(([k, a, b]) => k === '=' ? `<div class="df-l">${esc(a) || '&nbsp;'}</div>`
     : k === '+' ? `<div class="df-l df-add">${esc(a)}</div>`
     : k === '-' ? `<div class="df-l df-del">${esc(a)}</div>`
-    : `<div class="df-l df-mod">${inlineDiff(a, b)}</div>`).join('');
-  box.innerHTML = prog + `<details class="card pad fold dif-fold rp-diff"${same ? '' : ' open'}><summary>跟上次回報比<span class="fold-s">${
-    same ? '一模一樣，不用再發' : `改 ${c['~']}・新增 ${c['+']}・刪掉 ${c['-']}`}</span></summary>
-    <p class="hint" style="margin:0.375rem 0">上次回報：${fmtShort(S.at)}　<span class="df-add df-k">新增</span><span class="df-mod df-k"><mark class="df-chg">改到的字</mark></span><span class="df-del df-k">刪掉</span></p>
-    ${moved.length ? `<div class="rp-moved">站臺有變：${moved.join('；')}</div>` : ''}
-    <div class="df">${lines}</div>
-    ${S.since && DB.since > S.at - 60000 && c['-'] ? '<p class="hint" style="margin:0.5rem 0 0">「已復機」裡上次報過的站，起算時間推進後就不再列，所以會顯示成刪掉。</p>' : ''}</details>`;
+    : `<div class="df-l df-mod">${inlineDiff(a, b)}</div>`).join('')}</div>`;
+  const how = S.how || '標記已回報';
+  head.innerHTML = same
+    ? `<b class="oc-same">跟 ${fmtShort(S.at)} ${how}的那份一模一樣，不用再發</b>`
+    : `<b>跟 ${fmtShort(S.at)} ${how}的那份比：改 ${c['~']}・新增 ${c['+']}・刪掉 ${c['-']}</b>
+      <span class="oc-k"><span class="df-add df-k">新增</span><span class="df-mod df-k"><mark class="df-chg">改到的字</mark></span><span class="df-del df-k">刪掉</span></span>`
+      + (S.since && DB.since > S.at - 60000 && ops.some(o => o[0] === '-' && /完成開機/.test(o[1]))
+        ? '<span class="oc-note">「已復機」裡上次報過的站，起算時間推進後就不再列，所以顯示成刪掉。</span>' : '');
 }
 
 /* ── 群組回報彙整（萬用判讀）────────────────────────────────
@@ -10051,6 +10190,7 @@ function refreshImp() {
   renderImp();
 }
 function applyPaste(rows) {
+  snap(`套用比對（${rows.length} 項）`);
   let n = 0;
   for (const r of rows) {
     if (r.kind === 'new') {
@@ -10614,6 +10754,9 @@ function openTypes() {
       <input type="text" data-t="${t.id}" data-k="icon" value="${esc(t.icon || '')}"
         placeholder="${typeIcon(t)}" maxlength="2">
       <span class="sub">地圖上這個類別的圖標，可填一個字或 emoji。留空用預設的 ${typeIcon(t)}。</span></label>
+    <label class="fld" style="margin-bottom:0.5rem"><span class="lb">類別顏色</span>
+      <input type="color" data-t="${t.id}" data-k="color" value="${typeColor(t)}" style="height:2.5rem;padding:0.125rem">
+      <span class="sub">站臺卡的類別標籤、地圖圖標的外圈用這個顏色（圖標填色仍是開機／待機／關機）。避開綠、琥珀、紅，免得跟狀態混淆。</span></label>
     <label class="fld" style="margin-bottom:0.5rem"><span class="lb">停班停課雨量基準</span>
       <select data-t="${t.id}" data-k="terrain">
         ${Object.entries(TERRAIN).map(([k, v]) =>
@@ -10641,6 +10784,7 @@ function openTypes() {
         const el = e.target.closest('input[data-t]'); if (!el) return;
         const t = DB.types.find(x => x.id === el.dataset.t); if (!t) return;
         t[el.dataset.k] = el.value; save();
+        if (el.dataset.k === 'color') { renderStations(); if (DB.ty.data) renderTyphoon({}); }
       });
       $('#shBody').addEventListener('click', e => {
         const g = e.target.closest('button.tgl[data-t]');
@@ -10658,7 +10802,10 @@ function openTypes() {
         }
       });
       $('#t_add').onclick = () => {
-        DB.types.push({ id: uid(), label: '新類別', report: '新類別', terrain: 'flat', noReport: false });
+        // 新類別先給一個還沒人用的顏色
+        const usedC = new Set(DB.types.map(typeColor));
+        DB.types.push({ id: uid(), label: '新類別', report: '新類別', terrain: 'flat', noReport: false,
+          color: TYPE_PAL.find(c => !usedC.has(c)) || TYPE_PAL[DB.types.length % TYPE_PAL.length] });
         save(); openTypes(); renderStations();
       };
     });
@@ -11633,6 +11780,7 @@ $$('.nav button').forEach(b => b.onclick = () => go(b.dataset.p));
 /* ── 回報頁事件 ──────────────────────────────────────── */
 $('#tplSeg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.t !== DB.tpl) snap(b.dataset.t === 'A' ? '切換到初報' : '切換到續報');
   DB.tpl = b.dataset.t; save();
   $$('#tplSeg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
   generate();
@@ -11704,17 +11852,32 @@ $('#tyName').addEventListener('input', () => {
   save(); generate();
 });
 $('#since').addEventListener('change', () => { DB.since = fromInput($('#since').value); save(); generate(); });
-$('#regen').onclick = () => { generate(); toast('已依目前站臺狀態重新產生'); };
+$('#regen').onclick = () => { snap('重新產生'); generate(); toast('已依目前站臺狀態重新產生'); };
+// 手改：切成文字框；改的字即時反映到上色檢視
+$('#editOut').onclick = () => {
+  const on = $('#out').hidden;
+  $('#out').hidden = !on; $('#outView').hidden = on;
+  $('#editOut').setAttribute('aria-pressed', String(on));
+  $('#editOut').textContent = on ? '✓ 改好了' : '✎ 手改文字';
+  if (on) $('#out').focus(); else renderOutView();
+};
+$('#out').addEventListener('input', renderOutView);
+// 比對的基準：送出去的那份（含手改過的字）與當時各站狀態
+const sentSnap = how => ({ at: Date.now(), text: $('#out').value, tpl: DB.tpl, how,
+  st: Object.fromEntries(DB.stations.map(x => [x.id, { status: x.status, at: x.at }])) });
 $('#markSent').onclick = () => {
-  // 先存「這次送出去的」（含手改過的字）與各站狀態,下次產生時拿來比
-  DB.sent = { at: Date.now(), text: $('#out').value, tpl: DB.tpl, since: 1,
-    st: Object.fromEntries(DB.stations.map(x => [x.id, { status: x.status, at: x.at }])) };
+  snap('標記已回報');
+  DB.sent = { ...sentSnap('標記已回報'), since: 1 };
   DB.since = Date.now(); $('#since').value = toInput(DB.since); save(); generate();
   toast('已記下這次回報；起算時間推進到現在');
 };
 $('#copyOut').onclick = async () => {
-  try { await navigator.clipboard.writeText($('#out').value); toast('全文已複製'); }
-  catch { $('#out').select(); document.execCommand('copy'); toast('全文已複製'); }
+  try { await navigator.clipboard.writeText($('#out').value); }
+  catch { $('#out').hidden = false; $('#out').select(); document.execCommand('copy'); if ($('#editOut').getAttribute('aria-pressed') !== 'true') $('#out').hidden = true; }
+  // 複製＝要發出去了：記成比對基準（起算時間不動，那要按「標記已回報」）。內容沒變就不重記，免得時間一直跳
+  const fresh = !DB.sent || DB.sent.text !== $('#out').value;
+  if (fresh) { DB.sent = sentSnap('複製'); save(); renderOutView(); }
+  toast(fresh ? '全文已複製；之後改了哪裡會用顏色標在稿子上' : '全文已複製');
   if (!DB.cfg.guideCopied) { DB.cfg.guideCopied = true; save(); renderStations(); }
 };
 
