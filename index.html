@@ -655,6 +655,7 @@ details.more>.hint{margin-top:0.25rem}
 .cam-map{height:min(26rem,58vh);border:1px solid var(--edge2);border-radius:var(--r);overflow:hidden;background:var(--bg2);
   position:relative;z-index:0}   /* 自成一層：Leaflet 的縮放鈕 z-index 800，不包起來會浮到底部視窗上面 */
 .cam-lg i{display:inline-block;width:0.5rem;height:0.5rem;border-radius:50%;background:var(--c);margin:0 0.25rem 0 0.625rem;vertical-align:0}
+.cam-lg i.pg{background:transparent;box-shadow:inset 0 0 0 1.5px var(--fg3)}
 .cam-st{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem;padding:0.5rem 0;border-bottom:1px solid var(--edge)}
 .cam-st .stn{flex:0 0 100%;font-size:0.875rem}
 .cam-chip{display:inline-flex;align-items:baseline;gap:0.375rem;max-width:100%;padding:0.375rem 0.625rem;border:1px solid var(--edge2);
@@ -667,6 +668,10 @@ details.more>.hint{margin-top:0.25rem}
 .cam-wait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;
   color:var(--fg3);font-size:0.8125rem;background:rgba(0,0,0,.6)}
 .cam-wait[hidden]{display:none}
+.cam-view video{display:block;width:100%;height:auto;background:#000}
+.cam-view video[hidden]{display:none}
+.cam-wait{flex-direction:column;gap:0.75rem;line-height:1.6}
+.cam-pg .cam-wait{position:static;background:none;color:var(--fg2)}
 .leaflet-tooltip.cam-sttip{background:transparent;border:0;box-shadow:none;color:#EAF4F8;font:700 10px var(--mono);
   text-shadow:0 0 3px #08131A,0 0 6px #08131A;padding:0}
 .leaflet-tooltip.cam-sttip::before{display:none}
@@ -1969,7 +1974,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v91';
+const APP_VER = 'v92';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -8137,7 +8142,7 @@ function mapLegend() {
    - 圖片載不出來（有些縣市給的是網頁，不是影像）→ 不硬嵌，給「原始畫面 ↗」在新分頁開。
    tw.live 不能內嵌（X-Frame-Options），它的 FAQ 也說嵌入要找原始單位授權，所以只做「附近影像 ↗」外部連結。
    流量：關掉視窗就把 <img> 清空，MJPEG 才會停；颱風天手機網路慢，不在背景播。 */
-const LIVE_KEY = 'galepost.ui.live';
+const LIVE_KEY = 'galepost.ui.live', CAMBASE_KEY = 'galepost.ui.cambase';
 const liveMode = () => { try { return localStorage.getItem(LIVE_KEY) === 'wy' ? 'wy' : 'cam'; } catch (e) { return 'cam'; } };
 let CAMS = null, CAMS_AT = '', CAMS_ERR = '', CAMMAP = null, _camP = null;
 const CAM_COL = { Freeway: '#7FA8FF', Highway: '#4FD1C5', city: '#E6EEF2' };
@@ -8149,7 +8154,7 @@ function loadCams() {
       if (!j || j.v !== 1 || !Array.isArray(j.groups)) throw new Error('格式不對');
       CAMS = []; CAMS_AT = j.updated || '';
       for (const g of j.groups) for (const c of g.cams || []) {
-        CAMS.push({ lat: c[0], lng: c[1], name: c[2], url: c[3], img: c[4], g: g.k, src: g.name });
+        CAMS.push({ lat: c[0], lng: c[1], name: c[2], url: c[3], img: c[4], play: c[5] || '', g: g.k, src: g.name });
       }
       return CAMS;
     })
@@ -8184,7 +8189,7 @@ async function renderCams() {
   }
   box.innerHTML = `<div class="cam-map" id="camMap"></div>
     <p class="hint" style="margin:0.375rem 0 0.75rem">${CAMS.length.toLocaleString()} 支官方監視器　點圓點看即時畫面　<span class="cam-lg">
-      <i style="--c:${CAM_COL.Freeway}"></i>國道<i style="--c:${CAM_COL.Highway}"></i>省道<i style="--c:${CAM_COL.city}"></i>縣市</span></p>
+      <i style="--c:${CAM_COL.Freeway}"></i>國道<i style="--c:${CAM_COL.Highway}"></i>省道<i style="--c:${CAM_COL.city}"></i>縣市<i class="pg"></i>空心＝到機關網頁看</span></p>
     <div id="camNear"></div>
     <p class="ai-cite">監視器清單：交通部 TDX 運輸資料流通服務（政府資料開放授權條款）${CAMS_AT ? `，${esc(CAMS_AT.slice(0, 10))} 更新` : ''}。
       即時畫面由各來源機關提供，版權屬原機關；畫面常有數秒到數十秒延遲。「附近影像 ↗」開的是民間網站 tw.live。</p>`;
@@ -8192,7 +8197,7 @@ async function renderCams() {
   const near = sts.map(s => ({ s, n: camNear(s) }));
   $('#camNear').innerHTML = sts.length ? `<div class="sec"><h2>站臺附近</h2></div>` + near.map(({ s, n }) => `<div class="cam-st">
       <b class="stn">${esc(s.name)}</b>${n.length ? n.map(x => `<button type="button" class="cam-chip" data-cam="${x.i}">
-        ${esc(CAMS[x.i].name)}<small>${x.d < 1 ? '<1' : x.d.toFixed(1)} km</small></button>`).join('')
+        ${esc(CAMS[x.i].name)}<small>${x.d < 1 ? '<1' : x.d.toFixed(1)} km${camPlay(CAMS[x.i]).k === 'page' ? ' ↗' : ''}</small></button>`).join('')
         : '<span class="hint">15 km 內沒有官方監視器</span>'}
       <a class="cam-tw" href="${twl(s.lat, s.lng)}" target="_blank" rel="noopener">附近影像 ↗</a></div>`).join('') : '';
   $('#camNear').onclick = e => { const b = e.target.closest('[data-cam]'); if (b) openCam(+b.dataset.cam); };
@@ -8201,14 +8206,26 @@ async function renderCams() {
   CAMMAP = L.map('camMap', { zoomControl: false, attributionControl: true, minZoom: 6, maxZoom: 18 }).setView([23.7, 121], 7);
   CAMMAP.attributionControl.setPrefix('');
   L.control.zoom({ position: 'bottomleft' }).addTo(CAMMAP);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', { subdomains: 'abcd', maxZoom: 18,
-    attribution: '&copy; OpenStreetMap 貢獻者, &copy; CARTO' }).addTo(CAMMAP);
+  // 戰情圖的海岸線與地名要這兩層
+  CAMMAP.createPane('landPane').style.zIndex = 350;
+  CAMMAP.createPane('geoPane').style.zIndex = 420;
+  /* 四種底圖都能切，記住各自的選擇（跟颱風路徑圖分開記：看監視器要的是街道，看颱風要的是戰情圖）。
+     預設彩色地圖：找監視器要看路名，暗色或戰情圖在街道層級幾乎一片黑。 */
+  const bl = makeBaseLayers({ max: 18, roads: true });
+  let bk = 'street';
+  try { bk = localStorage.getItem(CAMBASE_KEY) || 'street'; } catch (e) {}
+  if (!BASEMAPS[bk]) bk = 'street';
+  bl[BASEMAPS[bk].label].addTo(CAMMAP);
+  L.control.layers(bl, null, { position: 'topright' }).addTo(CAMMAP);
+  CAMMAP.on('baselayerchange', e => { try { localStorage.setItem(CAMBASE_KEY, e.layer._gpKey || 'street'); } catch (err) {} });
   // 六千多個點用 canvas 畫；手指點不準，點擊容許範圍放大到 10 px
   const rend = L.canvas({ padding: 0.3, tolerance: 10 });
   // 縮小看全臺時點要小，不然北部、西部擠成一整片白；放大到街道才放大好點
   const camR = () => { const z = CAMMAP.getZoom(); return z <= 8 ? 2 : z <= 11 ? 3.5 : 5; };
-  const dots = CAMS.map((c, i) => L.circleMarker([c.lat, c.lng], { renderer: rend, radius: 2, weight: 1, color: '#040A10',
-    fillColor: camCol(c.g), fillOpacity: 0.9 }).on('click', () => openCam(i)).addTo(CAMMAP));
+  // 空心＝App 裡播不了、要到機關網頁看：點之前就知道，不用點了才失望
+  const dots = CAMS.map((c, i) => { const pg = camPlay(c).k === 'page';
+    return L.circleMarker([c.lat, c.lng], { renderer: rend, radius: 2, weight: pg ? 1.5 : 1, color: pg ? camCol(c.g) : '#040A10',
+      fillColor: camCol(c.g), fillOpacity: pg ? 0.12 : 0.9 }).on('click', () => openCam(i)).addTo(CAMMAP); });
   CAMMAP.on('zoomend', () => { const r = camR(); dots.forEach(d => d.setRadius(r)); });
   sts.forEach(s => L.marker([s.lat, s.lng], { icon: stPin(s, typeOf(s.type)), zIndexOffset: 800 })
     .bindTooltip(s.name, { permanent: true, direction: 'bottom', className: 'cam-sttip' }).addTo(CAMMAP));
@@ -8218,42 +8235,107 @@ async function renderCams() {
   { const r = camR(); dots.forEach(d => d.setRadius(r)); }
   setTimeout(() => CAMMAP && CAMMAP.invalidateSize(), 80);
 }
-let _camTimer = 0;
+/* 各來源的畫面格式（v92）。使用者 10/25 回報只有國道在 App 裡看得到，其他都不行。
+   2026-10-25 從 GitHub Actions 逐一實測（含 Playwright WebKit，跟 iPhone Safari 同核心；海外連不到的縣市靠網址樣式判斷），分五種：
+   - img：標準 MJPEG 串流或 JPEG，<img> 直接播（國道、省道、新竹縣、嘉義市、屏東轉址到 MJPEG…）
+   - poll：基隆、臺中、臺東這家廠商（網址是 8 碼十六進位）。它的串流分隔線少了兩個「-」（寫 ---mjpeg---，
+     標準要 -----mjpeg---），Chromium 寬鬆照播，Safari 嚴格拒絕——連程式自己 fetch 都被 WebKit 擋成 Load failed。
+     同一台主機的「網址/snapshot」給單張標準 JPEG，iPhone 播得出來，所以改成每 2 秒換一張（基隆、臺東實測可以；
+     臺中的主機沒有 /snapshot，退回串流——Chrome 播得出來，iPhone 只能看「附近影像」）
+   - snap：只有截圖網址的，每 10 秒換一張（新竹市）
+   - hls：.m3u8，用 <video>；iPhone 原生會播（南投：播放頁裡的 m3u8 照編號推得出來）
+   - page：機關自己的播放網頁（要跑它的播放器、禁止別的網站嵌入），App 裡播不了——
+     不讓人白等「載入中」，直接給「到機關網頁看」的大按鈕
+   後端解析過播放網頁的（臺中：網頁裡寫的 MJPEG 直連）放在 c.play，優先用。 */
+const CAM_PAGE = [
+  /^https:\/\/hls\.bote\.gov\.taipei\/live\/index\.html/,          // 臺北：播放頁先打它的 API（依 IP 限流）才開始轉檔，沒有固定串流網址
+  /^https:\/\/atis\.ntpc\.gov\.tw\/ATIS\/ShowFrame4CCTV\//,        // 新北：flv.js／hls.js 播放頁、禁止嵌入
+  /^https:\/\/motoretag\.taichung\.gov\.tw\/ATIS_TCC\/Device\/Showcctv/,  // 臺中：後端還沒解析到直連時
+  /^https:\/\/yltraffic\.yunlin\.gov\.tw\/CCTV\/Live\.html/,       // 雲林
+  /\/ATIS\/Device\/ShowCCTVWebm\//,                                  // 宜蘭：WebM 播放頁
+  /\/web\/streamingplayer\/player\.html/,                            // 高雄部分
+];
+const CAM_POLL = /^(https:\/\/[^/]+\/[0-9a-f]{8})\/?$/i;
+function camPlay(c) {
+  const u = c.play || c.url || '';
+  if (/\.m3u8(\?|$)/.test(u)) return { k: 'hls', src: u };
+  const nt = u.match(/^(https:\/\/trafficcctv\.nantou\.gov\.tw\/cctv\/)(\w+)\.html$/);
+  if (nt) return { k: 'hls', src: `${nt[1]}${nt[2]}/${nt[2]}.m3u8` };
+  if (u && !c.play && CAM_PAGE.some(r => r.test(u))) return { k: 'page', src: u };
+  const pv = u.match(CAM_POLL);
+  if (pv) return { k: 'poll', src: pv[1] + '/snapshot', stream: u };
+  if (u) return { k: 'img', src: u };
+  return c.img ? { k: 'snap', src: c.img } : { k: 'page', src: '' };
+}
+let _camTimer = 0, _camSlow = 0;
 function stopCam() {
-  clearInterval(_camTimer); _camTimer = 0;
+  clearTimeout(_camTimer); _camTimer = 0; clearTimeout(_camSlow); _camSlow = 0;
   const im = document.getElementById('camImg');
-  if (im) { im.onerror = null; im.removeAttribute('src'); }   // 清掉 src，MJPEG 串流才會斷
+  if (im) { im.onerror = im.onload = null; im.removeAttribute('src'); }   // 清掉 src，MJPEG 串流才會斷
+  const v = document.getElementById('camVid');
+  if (v) { v.onerror = v.onloadeddata = null; v.pause(); v.removeAttribute('src'); try { v.load(); } catch (e) {} }
 }
 function openCam(i) {
   const c = CAMS && CAMS[i]; if (!c) return;
   const sts = camStations();
   let near = null;
   for (const s of sts) { const d = distKm(s, c); if (!near || d < near.d) near = { s, d }; }
-  const src = c.url || c.img;
-  openSheet(c.name, `
-    <div class="cam-view"><img id="camImg" alt=""><div class="cam-wait" id="camWait">載入畫面中…</div></div>
-    <p class="hint" style="margin:0.5rem 0 0.75rem">來源：${esc(c.src)}${near ? `　距 ${esc(near.s.name)} ${near.d.toFixed(1)} km` : ''}${c.img && !c.url ? '　每 10 秒更新一張' : ''}</p>
+  const P = camPlay(c);
+  // iPhone／Safari 原生播 HLS；其他瀏覽器（電腦版 Chrome、Android）多半不行，直接當網頁連結
+  const canHls = P.k === 'hls' && !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
+  const k = P.k === 'hls' && !canHls ? 'page' : P.k;
+  const orig = c.url || c.img;
+  const pageMsg = '這個來源的畫面要在機關自己的播放網頁看（對方不開放其他網站直接播放）。';
+  const view = k === 'page'
+    ? `<div class="cam-view cam-pg"><div class="cam-wait" id="camWait">${pageMsg}${orig ? `<a class="btn pri" href="${esc(orig)}" target="_blank" rel="noopener">到機關網頁看即時畫面 ↗</a>` : ''}</div></div>`
+    : k === 'hls'
+      ? '<div class="cam-view"><video id="camVid" muted playsinline autoplay controls hidden></video><div class="cam-wait" id="camWait">載入畫面中…</div></div>'
+      // no-referrer：有些機關主機擋「從別的網站引用」的影像，不帶來源網址才放行
+      : '<div class="cam-view"><img id="camImg" alt="" referrerpolicy="no-referrer"><div class="cam-wait" id="camWait">載入畫面中…</div></div>';
+  openSheet(c.name, `${view}
+    <p class="hint" style="margin:0.5rem 0 0.75rem">來源：${esc(c.src)}${near ? `　距 ${esc(near.s.name)} ${near.d.toFixed(1)} km` : ''}${k === 'snap' ? '　每 10 秒更新一張' : k === 'poll' ? '　每 2 秒更新一張' : ''}</p>
     <div class="btnrow">
-      ${src ? `<a class="btn" href="${esc(src)}" target="_blank" rel="noopener">原始畫面 ↗</a>` : ''}
+      ${orig && k !== 'page' ? `<a class="btn" href="${esc(orig)}" target="_blank" rel="noopener">原始畫面 ↗</a>` : ''}
       <a class="btn" href="https://tw.live/nearby/?lat=${c.lat}&lon=${c.lng}" target="_blank" rel="noopener">附近影像 ↗</a></div>`,
     () => {
-      const im = $('#camImg'), wait = $('#camWait');
-      const shown = () => { im.hidden = false; if (wait) wait.hidden = true; };
-      im.onload = shown;
-      im.onerror = () => {
-        // 有截圖網址的話再試一次截圖；都不行就是網頁不是影像，請他開原始畫面
-        if (c.img && im.dataset.tried !== 'img') { im.dataset.tried = 'img'; im.src = c.img; return; }
-        clearInterval(_camTimer); _camTimer = 0;          // 載不出來就不必一直換；src 留著（失敗的連線本來就沒在傳）
-        im.hidden = true;                                  // 破圖示不要露出來
-        if (wait) { wait.hidden = false; wait.innerHTML = '這支的畫面不是影像檔（多半是機關自己的播放網頁），按下面「原始畫面 ↗」開。'; }
+      if (k === 'page') return;
+      const wait = $('#camWait');
+      const shown = el => { el.hidden = false; if (wait) wait.hidden = true; clearTimeout(_camSlow); };
+      const fail = el => {
+        clearTimeout(_camTimer); _camTimer = 0; clearTimeout(_camSlow);   // 載不出來就不必一直換；失敗的連線本來就沒在傳
+        el.hidden = true;                                 // 破圖示不要露出來
+        if (wait) { wait.hidden = false; wait.textContent = `畫面載不出來（機關主機沒回應、離線或維修中）。可以按下面${orig ? '「原始畫面 ↗」或' : ''}「附近影像 ↗」看看。`; }
       };
-      if (c.url) im.src = c.url;
-      else { im.dataset.tried = 'img'; im.src = c.img; }
-      // 只有截圖的，定時換新的一張（加時間參數避開快取）
-      if (!c.url && c.img) _camTimer = setInterval(() => {
-        if (!document.getElementById('camImg')) return stopCam();
-        im.src = c.img + (c.img.includes('?') ? '&' : '?') + '_t=' + Date.now();
-      }, 10000);
+      // 對方主機很慢時不要一直只寫「載入中」：12 秒後講可能的原因，但不放棄（MJPEG 常要等一下才出第一張）
+      _camSlow = setTimeout(() => { if (wait && !wait.hidden) wait.textContent = '還在等機關主機回應…颱風天可能很多人在看，或這支暫時離線。'; }, 12000);
+      if (k === 'hls') {
+        const v = $('#camVid');
+        v.onloadeddata = () => shown(v);
+        v.onerror = () => fail(v);
+        v.src = P.src;
+        return;
+      }
+      const im = $('#camImg');
+      const bust = u => u + (u.includes('?') ? '&' : '?') + '_t=' + Date.now();   // 換一張時避開快取
+      const fallback = () => {
+        // 截圖不行就改試原生串流；串流不行、還有截圖網址的再試截圖；都不行才請他開連結
+        if (k === 'poll' && !frames && im.dataset.tried !== 'stream') { im.dataset.tried = 'stream'; im.src = P.stream; return; }
+        if (k === 'img' && c.img && P.src !== c.img && im.dataset.tried !== 'img') { im.dataset.tried = 'img'; im.src = c.img; return; }
+        fail(im);
+      };
+      let frames = 0;
+      // 一張載完才排下一張：主機慢時不會一直疊請求；中途偶爾失敗就留著上一張、晚一點再試
+      const next = ms => { clearTimeout(_camTimer); _camTimer = setTimeout(() => { if (document.getElementById('camImg') === im) im.src = bust(P.src); }, ms); };
+      im.onload = () => {
+        if (!im.naturalWidth) return fallback();           // Safari 解不開的串流有時是「載完但 0×0」
+        shown(im); frames++;
+        if ((k === 'poll' && im.dataset.tried !== 'stream') || k === 'snap') next(k === 'poll' ? 2000 : 10000);
+      };
+      im.onerror = () => {
+        if (frames && (k === 'poll' || k === 'snap') && im.dataset.tried !== 'stream') return next(5000);
+        fallback();
+      };
+      im.src = k === 'poll' || k === 'snap' ? bust(P.src) : P.src;
     });
 }
 
@@ -8671,6 +8753,7 @@ const BASEMAPS = {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     attr: 'Esri, Maxar, Earthstar Geographics',
     max: 12,
+    native: 18,
     // 衛星影像沒有地名,疊一層邊界與地名才知道打到哪裡
     over: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
   },
@@ -8679,12 +8762,18 @@ const BASEMAPS = {
     url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attr: '&copy; OpenStreetMap 貢獻者',
     max: 12,
+    native: 19,
   },
+  /* v92 從 CARTO 換成 Esri 深灰：CARTO 的 dark_all 改成要 API 金鑰，沒帶金鑰的圖磚只剩一片黑底加
+     「API KEY REQUIRED」浮水印，等於沒有地圖。Esri 這組跟衛星影像同一台主機、不用金鑰；
+     圖磚只到 16 級，再放大就拉伸 16 級的圖（native），不會變成空白。 */
   dark: {
     label: '暗色地圖',
-    url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-    attr: '&copy; OpenStreetMap 貢獻者, &copy; CARTO',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    over: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attr: 'Esri, HERE, Garmin, &copy; OpenStreetMap 貢獻者',
     max: 12,
+    native: 16,
   },
 };
 const BASEMAP_KEY = 'galepost.ui.basemap';
@@ -8815,6 +8904,22 @@ function makeHudLayer() {
 }
 let MAP_NOCOAST = false;
 
+/* 一張地圖一組圖層實例（Leaflet 的圖層不能同時掛在兩張地圖上）。監視器地圖要放大到街道（18 級），
+   超過來源圖磚的級數就拉伸最後一級，不讓它變空白；衛星影像在那裡多疊道路，才找得到監視器在哪條路上。 */
+function makeBaseLayers(o = {}) {
+  const layers = {};
+  for (const [k, b] of Object.entries(BASEMAPS)) {
+    if (b.vector) { layers[b.label] = makeHudLayer(); layers[b.label]._gpKey = k; continue; }
+    const max = o.max || b.max, nat = Math.min(b.native || b.max, max);
+    const tl = (u, extra) => L.tileLayer(u, { maxZoom: max, maxNativeZoom: nat, ...extra });
+    const parts = [tl(b.url, { attribution: b.attr })];
+    if (o.roads && k === 'sat') parts.push(tl('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'));
+    if (b.over) parts.push(tl(b.over));
+    layers[b.label] = parts.length > 1 ? L.layerGroup(parts) : parts[0];
+    layers[b.label]._gpKey = k;
+  }
+  return layers;
+}
 let BASELAYERS = null;
 function initBasemaps(map) {
   let saved = 'hud';
@@ -8829,15 +8934,7 @@ function initBasemaps(map) {
   } catch (e) {}
   if (!BASEMAPS[saved]) saved = 'hud';
 
-  const layers = {};
-  for (const [k, b] of Object.entries(BASEMAPS)) {
-    if (b.vector) { layers[b.label] = makeHudLayer(); layers[b.label]._gpKey = k; continue; }
-    const base = L.tileLayer(b.url, { maxZoom: b.max, attribution: b.attr });
-    layers[b.label] = b.over
-      ? L.layerGroup([base, L.tileLayer(b.over, { maxZoom: b.max })])
-      : base;
-    layers[b.label]._gpKey = k;
-  }
+  const layers = makeBaseLayers();
   layers[BASEMAPS[saved].label].addTo(map);
   /* 底圖與站臺圖層共用同一個控制項。分成兩個的話右上角會出現兩疊一樣的圖示,
      使用者要猜哪一個是哪一個。 */

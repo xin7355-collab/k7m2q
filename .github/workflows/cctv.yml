@@ -19,7 +19,8 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # TDX 清單約 2 分鐘＋臺中播放網頁解析（300 多頁，一頁約 0.8 秒，預算 6 分鐘，超過留給下一輪）
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4 # guardrails: ignore
         with:
@@ -33,6 +34,8 @@ jobs:
         run: python scripts/fetch_cctv.py selftest
 
       - name: Fetch
+        env:
+          CCTV_RESOLVE_SEC: "360"
         run: python scripts/fetch_cctv.py
 
       - name: Commit if changed

@@ -19,9 +19,15 @@
 網站是 https，http 的影像會被瀏覽器擋（混合內容）；192.168.x 這類內網位址外面連不到；沒座標或座標跑到臺灣外的畫不上地圖。
 這些直接濾掉，並記下濾掉幾支。
 
+**播放網頁 → 直連影像（v92）**
+有些縣市給的「影像網址」其實是機關自己的播放網頁，手機 App 裡的 <img> 播不了（使用者 10/25 回報只有國道看得到）。
+網頁裡寫死真正 MJPEG 網址的（臺中：motoretag…/Showcctv?id=… 裡的 tcnvrN.taichung.gov.tw/…），後端先解析好放第 6 欄；
+解析不到的前端直接給「在機關網頁開」的連結。每輪都重新解析（網址可能換 NVR 主機），抓不到的沿用上一輪的結果。
+
 輸出 data/cctv.json：
   {"v":1, "updated":"…", "src":"TDX", "groups":[{"k":"Freeway","name":"國道","at":"…","n":1811,"err":"","none":false,
-     "cams":[[緯, 經, "名稱", "影像網址", "截圖網址或空字串"], …]}, …], "dropped":{"http":0,"private":13,"nogeo":18}}
+     "cams":[[緯, 經, "名稱", "影像網址", "截圖網址或空字串"(, "解析出的直連影像")], …]}, …],
+   "dropped":{"http":0,"private":13,"nogeo":18}, "resolved":{"ok":309,"fail":0,"kept":0}}
 
 離線自我測試：python3 scripts/fetch_cctv.py selftest
 """
@@ -50,6 +56,12 @@ CITIES = [("Taipei", "臺北市"), ("NewTaipei", "新北市"), ("Taoyuan", "桃�
 SOURCES = [("Freeway", "國道"), ("Highway", "省道")] + [("City/" + k, v) for k, v in CITIES]
 # 臺灣本島、離島（含金門、馬祖、東沙）的大框；跑出去的多半是經緯度填反或填 0
 BOX = (20.4, 26.6, 116.5, 122.2)
+# 播放網頁的網址樣式 → 網頁裡直連影像的抓法。只收網頁裡明寫的 https 影像網址，不猜
+RESOLVERS = [
+    (re.compile(r"^https://motoretag\.taichung\.gov\.tw/ATIS_TCC/Device/Showcctv\?id=\w+$"),
+     re.compile(r"<img[^>]+src=[\"'](https://[^\"']+)[\"']", re.I)),
+]
+RESOLVE_SEC = float(os.environ.get("CCTV_RESOLVE_SEC", "240"))   # 解析的時間預算；超過的留給下一輪
 
 
 def now_iso():
@@ -132,6 +144,59 @@ def fetch(path, timeout=60):
         raise
 
 
+def fetch_page(u, timeout=15):
+    req = Request(u, headers={"User-Agent": "Mozilla/5.0 (compatible; data-fetch/1.0)"})
+    with urlopen(req, timeout=timeout) as r:
+        return r.read(200_000).decode("utf-8", "replace")
+
+
+def resolver_for(u):
+    for pat, rx in RESOLVERS:
+        if u and pat.match(u):
+            return rx
+    return None
+
+
+def resolve(groups, prev_play, page_get=fetch_page, clock=time.monotonic, budget=None):
+    """播放網頁解析成直連影像，寫進每支的第 6 欄。回傳 {"ok":…, "fail":…, "kept":…}。
+    先解析沒有舊結果的，再更新有舊結果的；超過時間預算就停（沿用舊結果），不讓整個工作逾時白做。"""
+    budget = RESOLVE_SEC if budget is None else budget
+    todo = []
+    for g in groups:
+        for c in g.get("cams") or []:
+            rx = resolver_for(c[3])
+            if not rx:
+                continue
+            del c[5:]
+            old = prev_play.get(c[3], "")
+            c.append(old)
+            todo.append((bool(old), c, rx))
+    todo.sort(key=lambda t: t[0])                    # 沒有舊結果的先
+    st = {"ok": 0, "fail": 0, "kept": 0}
+    end = clock() + budget
+    for had, c, rx in todo:
+        if clock() > end:
+            st["kept" if had else "fail"] += 1
+            continue
+        try:
+            m = rx.search(page_get(c[3]))
+            play = m.group(1) if m else ""
+        except Exception:
+            play = ""
+        if play and https_ok(play)[0]:
+            c[5] = play
+            st["ok"] += 1
+        elif had:
+            st["kept"] += 1                          # 這次抓不到，沿用上一輪的
+        else:
+            st["fail"] += 1
+    for g in groups:                                 # 解析不出來的不留空欄
+        for c in g.get("cams") or []:
+            if len(c) > 5 and not c[5]:
+                del c[5:]
+    return st
+
+
 def load_prev():
     try:
         with open(OUT, encoding="utf-8") as f:
@@ -158,10 +223,11 @@ def order(groups, now):
     return sorted(todo, key=key)
 
 
-def run(now=None, getter=fetch, sleep=time.sleep):
+def run(now=None, getter=fetch, sleep=time.sleep, page_get=fetch_page):
     now = now or datetime.now(TW)
     prev = load_prev() or {}
     groups = {g["k"]: g for g in prev.get("groups") or [] if g.get("k")}
+    prev_play = {c[3]: c[5] for g in groups.values() for c in g.get("cams") or [] if len(c) > 5 and c[5]}
     dropped = {"http": 0, "private": 0, "nogeo": 0}
     names = dict(SOURCES)
     tried = ok = 0
@@ -195,7 +261,11 @@ def run(now=None, getter=fetch, sleep=time.sleep):
     if tried and not ok and errs and not any(g.get("cams") for g in gl):
         print("錯誤：全部抓不到，而且手上也沒有舊清單：" + "；".join(errs[:5]))
         return 1
-    doc = {"v": 1, "src": "TDX", "updated": now_iso(), "total": total, "dropped": dropped, "groups": gl,
+    rs = resolve(gl, prev_play, page_get)
+    if rs["fail"] or rs["kept"]:
+        # 解析不到不算壞掉：前端會改給「在機關網頁開」的連結。只在紀錄裡講幾支
+        print(f"播放網頁解析：成功 {rs['ok']}、沿用上一輪 {rs['kept']}、解析不到 {rs['fail']}（這些在 App 裡改成外連）")
+    doc = {"v": 1, "src": "TDX", "updated": now_iso(), "total": total, "dropped": dropped, "resolved": rs, "groups": gl,
            "cite": "監視器清單：交通部 TDX 運輸資料流通服務（政府資料開放授權條款）。即時畫面由各來源機關提供。"}
     # 清單沒變也要寫：每份的抓取時間決定下一輪輪到誰，不寫的話永遠是同一批被重抓、另一批永遠不更新。
     # 一週只跑兩輪，多兩個 commit 沒關係
@@ -286,6 +356,42 @@ def selftest():
         calls.clear()
         run(now, g2, lambda s: None)
         check(len(calls) == 3, "每輪最多 CCTV_MAX_CALLS 份（留額度給別人）")
+
+        # 播放網頁解析（臺中）：網頁裡的 <img src> 變成第 6 欄；抓不到沿用上一輪；超過時間預算留給下一輪
+        tc = {"CCTVs": [{"CCTVID": f"T{i}", "VideoStreamURL": f"https://motoretag.taichung.gov.tw/ATIS_TCC/Device/Showcctv?id=C00000{i}",
+                         "PositionLat": 24.1 + i / 100, "PositionLon": 120.6} for i in range(1, 4)]
+              + [{"CCTVID": "K", "VideoStreamURL": "https://CCTV.KLCG.GOV.TW:443/9cc4ca1c", "PositionLat": 25.1, "PositionLon": 121.7}]}
+        page = '<td>07067中清路</td><img style="x" width=\'352\' src="https://tcnvr8.taichung.gov.tw/3d7db0{n}">'
+        pages = []
+
+        def pg_ok(u):
+            pages.append(u)
+            n = u[-1]
+            if n == "3":
+                return "<html>維護中</html>"
+            return page.format(n=n)
+        os.remove(OUT)
+        MAX_CALLS = 30
+        run(now, lambda k: (200, tc) if k == "City/Taichung" else (400, None), lambda s: None, pg_ok)
+        doc = load_prev()
+        tcg = next(g for g in doc["groups"] if g["k"] == "City/Taichung")
+        check([c[5] if len(c) > 5 else None for c in tcg["cams"]] == ["https://tcnvr8.taichung.gov.tw/3d7db01",
+              "https://tcnvr8.taichung.gov.tw/3d7db02", None, None], f"臺中播放網頁解析出 MJPEG 直連；解析不到、不是網頁的不加欄：{tcg['cams']}")
+        check(doc["resolved"] == {"ok": 2, "fail": 1, "kept": 0} and len(pages) == 3, f"只解析符合樣式的網頁、計數正確：{doc['resolved']}")
+
+        def pg_down(u):
+            raise URLError("timeout")
+        run(now + timedelta(days=4), lambda k: (429, None), lambda s: None, pg_down)
+        doc = load_prev()
+        tcg = next(g for g in doc["groups"] if g["k"] == "City/Taichung")
+        check(tcg["cams"][0][5] == "https://tcnvr8.taichung.gov.tw/3d7db01" and doc["resolved"]["kept"] == 2,
+              "網頁這次抓不到（TDX 也額度用完）：沿用上一輪解析的直連")
+        check(resolve([{"cams": [[0, 0, "x", "https://motoretag.taichung.gov.tw/ATIS_TCC/Device/Showcctv?id=C1", ""]]}], {},
+                      lambda u: '<img src="http://tcnvr8.taichung.gov.tw/a">')["fail"] == 1, "解析出 http（手機會擋）不收")
+        tick = iter(range(0, 1000, 100))
+        st = resolve([{"cams": [[0, 0, "x", f"https://motoretag.taichung.gov.tw/ATIS_TCC/Device/Showcctv?id=C{i}", ""] for i in range(5)]}],
+                     {}, lambda u: page.format(n=1), clock=lambda: next(tick), budget=250)
+        check(st["ok"] == 2 and st["fail"] == 3, f"超過時間預算就停，剩下的留給下一輪：{st}")
     print(f"全部通過（{okn} 項）")
     return 0
 

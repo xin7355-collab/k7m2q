@@ -855,6 +855,22 @@ test('舊裝置存過「衛星影像」：更新後先換成戰情圖一次，�
   expect(errors).toEqual([]);
 });
 
+test('暗色地圖（v92）：不再用要金鑰的 CARTO，改抓 Esri 深灰底圖＋地名；以前選過暗色的照樣是暗色', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('galepost.ui.basemap.v55', '1');
+    localStorage.setItem('galepost.ui.basemap', 'dark');
+  });
+  const tiles = [];
+  page.on('request', q => { if (/arcgisonline|openstreetmap|cartocdn/.test(q.url())) tiles.push(q.url()); });
+  const errors = await bootWith(page, [NEAR], { ty: typhoonFileFull() });
+  await goMap(page);
+  await expect(page.locator('#map')).not.toHaveClass(/hud/);
+  await expect.poll(() => tiles.filter(u => /World_Dark_Gray_Base/.test(u)).length).toBeGreaterThan(0);
+  await expect.poll(() => tiles.filter(u => /World_Dark_Gray_Reference/.test(u)).length).toBeGreaterThan(0);
+  expect(tiles.filter(u => /cartocdn/.test(u))).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('播放鍵往後走、再按就停；拖到 48 小時讀數卡列出暴風圈內縣市（推估）', async ({ page }) => {
   const errors = await bootWith(page, [NEAR], { ty: typhoonFileFull() });
   await goMap(page);
@@ -2643,12 +2659,16 @@ test('即時影像 › 監視器：臺灣地圖上有官方監視器，站臺附
   await expect(chips.nth(1)).toContainText('台62線');
   await expect(page.locator('#camNear .cam-tw')).toHaveAttribute('href', /tw\.live\/nearby\/\?lat=25\.13000&lon=121\.74000/);
   await expect(page.locator('#camBox .ai-cite')).toContainText('交通部 TDX');
-  // 點國道那支：直接把 MJPEG 當圖片；測試擋外連 → 載不出來 → 改請他開原始畫面
+  // 點國道那支：先讓瀏覽器直接把 MJPEG 當圖片；不行再由程式讀串流切圖；測試擋外連 → 都不行 → 請他開原始畫面
+  const camReq = [];
+  page.on('request', q => { if (/freeway\.gov\.tw/.test(q.url())) camReq.push(q.resourceType()); });
   await chips.nth(0).click();
   await expect(page.locator('#shTitle')).toHaveText('國道1號 0K+000 （基隆端→基隆交流道）');
-  expect(await page.locator('#camImg').getAttribute('src')).toBe('https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10000');
-  await expect(page.locator('#camWait')).toContainText('按下面「原始畫面 ↗」開');
-  await expect(page.locator('#shBody a', { hasText: '原始畫面' })).toHaveAttribute('href', 'https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10000');
+  await expect.poll(() => camReq).toEqual(['image']);
+  expect(await page.locator('#camImg').getAttribute('referrerpolicy')).toBe('no-referrer');   // 機關主機擋外站引用時才放行
+  await expect(page.locator('#camWait')).toContainText('畫面載不出來');
+  await expect(page.locator('#camWait')).toContainText('「原始畫面 ↗」或「附近影像 ↗」');
+  await expect(page.locator('#shBody .btnrow a', { hasText: '原始畫面' })).toHaveAttribute('href', 'https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10000');
   await expect(page.locator('#shBody a', { hasText: '附近影像' })).toHaveAttribute('href', 'https://tw.live/nearby/?lat=25.12299&lon=121.7357');
   await expect(page.locator('#shBody')).toContainText('距 基隆測試站');
   // 省道那支：影像網址失敗會改試截圖
@@ -2662,6 +2682,126 @@ test('即時影像 › 監視器：臺灣地圖上有官方監視器，站臺附
   await page.locator('#liveSeg button[data-live="wy"]').click();
   await expect(page.locator('#tyWindy .wy-bar')).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('galepost.ui.live'))).toBe('wy');
+  expect(errors).toEqual([]);
+});
+
+/* v92：只有國道在 App 裡看得到（使用者 10/25）→ 依來源分種類：MJPEG／截圖用 <img>、HLS 用 <video>、
+   機關播放網頁不白等、直接給大按鈕；後端解析出直連的（臺中）優先用直連 */
+const CCTV_KINDS = { v: 1, src: 'TDX', updated: '2026-10-25T20:00:00+08:00', total: 4, groups: [
+  { k: 'City/Taichung', name: '臺中市', n: 2, cams: [
+    [25.131, 121.741, '臺中直連', 'https://motoretag.taichung.gov.tw/ATIS_TCC/Device/Showcctv?id=C000001', '', 'https://tcnvr8.taichung.gov.tw/3d7db084'],
+    [25.132, 121.742, '臺中沒解析到', 'https://motoretag.taichung.gov.tw/ATIS_TCC/Device/Showcctv?id=C000002', '']] },
+  { k: 'City/NewTaipei', name: '新北市', n: 1, cams: [[25.133, 121.743, '新北播放頁', 'https://atis.ntpc.gov.tw/ATIS/ShowFrame4CCTV/C000002', '']] },
+  { k: 'City/NantouCounty', name: '南投縣', n: 1, cams: [[25.134, 121.744, '南投 HLS', 'https://trafficcctv.nantou.gov.tw/cctv/005.html', '']] },
+  { k: 'City/Hsinchu', name: '新竹市', n: 1, cams: [[25.135, 121.745, '新竹截圖', '', 'https://nvr1.hccg.gov.tw/thi-vms/cgi-bin/zms?monitor=68']] }] };
+
+test('即時影像 › 監視器（v92）：依來源用影像、HLS 或直接給機關網頁按鈕；播不了的在地圖上是空心點', async ({ page }) => {
+  // 模擬 iPhone Safari：原生會播 HLS
+  await page.addInitScript(() => {
+    const o = HTMLMediaElement.prototype.canPlayType;
+    HTMLMediaElement.prototype.canPlayType = function (t) { return /mpegurl/i.test(t) ? 'maybe' : o.call(this, t); };
+  });
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: CCTV_KINDS });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camMap')).toBeVisible();
+  const kinds = await page.evaluate(() => CAMS.map(c => camPlay(c).k + ' ' + camPlay(c).src));
+  expect(kinds).toEqual([
+    'poll https://tcnvr8.taichung.gov.tw/3d7db084/snapshot',
+    'page https://motoretag.taichung.gov.tw/ATIS_TCC/Device/Showcctv?id=C000002',
+    'page https://atis.ntpc.gov.tw/ATIS/ShowFrame4CCTV/C000002',
+    'hls https://trafficcctv.nantou.gov.tw/cctv/005/005.m3u8',
+    'snap https://nvr1.hccg.gov.tw/thi-vms/cgi-bin/zms?monitor=68']);
+  // 地圖：播不了的空心（填色幾乎透明），圖例講空心的意思
+  const fill = await page.evaluate(() => { const o = []; CAMMAP.eachLayer(l => { if (l instanceof L.CircleMarker) o.push(l.options.fillOpacity); }); return o; });
+  expect(fill).toEqual([0.9, 0.12, 0.12, 0.9, 0.9]);
+  await expect(page.locator('#camBox .cam-lg')).toContainText('空心＝到機關網頁看');
+  // 站臺附近：播不了的那幾支標 ↗
+  await expect(page.locator('#camNear .cam-chip', { hasText: '新北播放頁' })).toContainText('↗');
+  await expect(page.locator('#camNear .cam-chip', { hasText: '臺中直連' })).not.toContainText('↗');
+  // 臺中：用後端解析出的直連（這家廠商 Safari 解不開串流 → 改抓同主機的單張截圖），原始畫面仍連播放頁
+  const reqs = [];
+  page.on('request', q => { if (/taichung|nantou|hccg|ntpc/.test(q.url())) reqs.push(q.url()); });
+  await page.evaluate(() => openCam(0));
+  await expect.poll(() => reqs[0]).toMatch(/^https:\/\/tcnvr8\.taichung\.gov\.tw\/3d7db084\/snapshot\?_t=\d+$/);
+  await expect(page.locator('#shBody')).toContainText('每 2 秒更新一張');
+  expect(reqs.some(u => /motoretag/.test(u))).toBe(false);
+  await expect(page.locator('#shBody .btnrow a', { hasText: '原始畫面' })).toHaveAttribute('href', /motoretag\.taichung/);
+  // 新北：不載入、不出現「載入中」，直接大按鈕
+  await page.locator('#shClose').click();
+  reqs.length = 0;
+  await page.evaluate(() => openCam(2));
+  await expect(page.locator('#camImg')).toHaveCount(0);
+  expect(reqs).toEqual([]);                                   // 播放網頁不去連
+  await expect(page.locator('#camWait')).toContainText('機關自己的播放網頁');
+  await expect(page.locator('#camWait a.btn.pri')).toHaveAttribute('href', 'https://atis.ntpc.gov.tw/ATIS/ShowFrame4CCTV/C000002');
+  // 南投：<video> 播 m3u8；關掉時停掉
+  await page.locator('#shClose').click();
+  await page.evaluate(() => openCam(3));
+  expect(await page.locator('#camVid').getAttribute('src')).toBe('https://trafficcctv.nantou.gov.tw/cctv/005/005.m3u8');
+  expect(await page.locator('#camVid').evaluate(v => v.muted && v.playsInline)).toBe(true);
+  await page.locator('#shClose').click();
+  expect(await page.evaluate(() => { const v = document.getElementById('camVid'); return v ? v.getAttribute('src') : null; })).toBeNull();
+  // 新竹市只有截圖：每 10 秒換一張
+  await page.evaluate(() => openCam(4));
+  await expect(page.locator('#shBody')).toContainText('每 10 秒更新一張');
+  await expect.poll(() => reqs.find(u => /hccg/.test(u))).toMatch(/^https:\/\/nvr1\.hccg\.gov\.tw\/thi-vms\/cgi-bin\/zms\?monitor=68&_t=\d+$/);
+  await page.locator('#shClose').click();
+  // 監視器地圖有四種底圖可切（預設彩色地圖），選擇會記住
+  const ctl = page.locator('#camMap .leaflet-control-layers');
+  await expect(ctl).toHaveCount(1);
+  const labels = await ctl.locator('.leaflet-control-layers-base label').allTextContents();
+  expect(labels.map(t => t.trim())).toEqual(['戰情圖（離線可用）', '衛星影像', '彩色地圖', '暗色地圖']);
+  expect(await ctl.locator('.leaflet-control-layers-base input:checked + span').textContent()).toContain('彩色地圖');
+  await page.evaluate(() => { const ls = document.querySelectorAll('#camMap .leaflet-control-layers-base input'); ls[3].click(); });
+  expect(await page.evaluate(() => localStorage.getItem('galepost.ui.cambase'))).toBe('dark');
+  expect(errors).toEqual([]);
+});
+
+test('即時影像 › 監視器（v92）：基隆這家廠商的串流 Safari 解不開 → 改抓同主機 /snapshot，一張載完 2 秒後換下一張；關掉就停', async ({ page }) => {
+  const MJ = { v: 1, src: 'TDX', updated: '2026-10-25T20:00:00+08:00', total: 2, groups: [
+    { k: 'City/Keelung', name: '基隆市', n: 2, cams: [[25.131, 121.741, '基隆港', 'https://cctv.klcg.gov.tw/9cc4ca1c', ''],
+      [25.132, 121.742, '沒有截圖的那台', 'https://cctv-9.klcg.gov.tw/abcdef12/', '']] }] };
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: MJ });
+  const jpg = await page.evaluate(async () => {
+    const cv = document.createElement('canvas'); cv.width = 80; cv.height = 60;
+    const g = cv.getContext('2d'); g.fillStyle = 'blue'; g.fillRect(0, 0, 80, 60);
+    const bl = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.8));
+    return Array.from(new Uint8Array(await bl.arrayBuffer()));
+  });
+  const hits = [];
+  await page.route('https://cctv.klcg.gov.tw/**', r => { hits.push(r.request().url());
+    return /\/snapshot\?_t=\d+$/.test(r.request().url()) ? r.fulfill({ status: 200, contentType: 'image/jpeg', body: Buffer.from(jpg) }) : r.abort(); });
+  const hits9 = [];
+  await page.route('https://cctv-9.klcg.gov.tw/**', r => { hits9.push(r.request().url()); return r.fulfill({ status: 404, body: '' }); });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camMap')).toBeVisible();
+  await page.evaluate(() => openCam(0));
+  await expect.poll(() => page.locator('#camImg').evaluate(im => im.naturalWidth)).toBe(80);
+  await expect(page.locator('#camWait')).toBeHidden();
+  await expect.poll(() => hits.length, { timeout: 6000 }).toBeGreaterThan(1);       // 2 秒後換下一張
+  expect(hits.every(u => /^https:\/\/cctv\.klcg\.gov\.tw\/9cc4ca1c\/snapshot\?_t=\d+$/.test(u))).toBe(true);
+  await page.locator('#shClose').click();
+  const n = hits.length;
+  await page.waitForTimeout(2600);
+  expect(hits.length).toBe(n);                                                    // 關掉就不再抓
+  // 主機不給截圖：退回原生串流，也不行才講載不出來
+  await page.evaluate(() => openCam(1));
+  await expect(page.locator('#camWait')).toContainText('畫面載不出來');
+  expect(hits9.map(u => u.replace(/\?_t=\d+$/, ''))).toEqual(['https://cctv-9.klcg.gov.tw/abcdef12/snapshot', 'https://cctv-9.klcg.gov.tw/abcdef12/']);
+  expect(errors).toEqual([]);
+});
+
+test('即時影像 › 監視器：沒有原生 HLS 的瀏覽器（電腦、Android）不硬播 m3u8，直接給機關網頁按鈕', async ({ page }) => {
+  await page.addInitScript(() => { HTMLMediaElement.prototype.canPlayType = () => ''; });
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: CCTV_KINDS });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camMap')).toBeVisible();
+  await page.evaluate(() => openCam(3));
+  await expect(page.locator('#camVid')).toHaveCount(0);
+  await expect(page.locator('#camWait a.btn.pri')).toHaveAttribute('href', 'https://trafficcctv.nantou.gov.tw/cctv/005.html');
   expect(errors).toEqual([]);
 });
 
