@@ -18,8 +18,8 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    # 摘要 8 頁約 5 秒＋YouTube oEmbed 驗證 360 多支（一秒五支，預算 5 分鐘，超過的先照收）
-    timeout-minutes: 10
+    # 摘要 8 頁約 5 秒＋YouTube 驗證 360 多支（oEmbed＋影片頁，一支約 1 秒，預算 8 分鐘，超過的先照收）
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4 # guardrails: ignore
         with:

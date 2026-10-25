@@ -2877,7 +2877,7 @@ test('監視器畫面（v93）：「全螢幕」把畫面撐滿整個視窗，�
   expect(errors).toEqual([]);
 });
 
-const WFU_FILE = { v: 1, src: 'WFU', updated: '2026-10-26T05:17:00+08:00', total: 6,
+const WFU_FILE = { v: 1, src: 'WFU', updated: '2026-10-26T05:17:00+08:00', total: 7,
   cite: '清單整理：WFU「台灣景點人潮即時影像」（monitor1.wfuapp.com）。畫面版權屬各影像提供者。',
   items: [
     ['基隆海洋廣場', '基隆', 'y', 'abcdefghijk', 'https://monitor1.wfuapp.com/2024/01/a.html', ['港口', '颱風海象']],
@@ -2885,6 +2885,7 @@ const WFU_FILE = { v: 1, src: 'WFU', updated: '2026-10-26T05:17:00+08:00', total
     ['台北大巨蛋', '台北', 'i', 'https://cctv.bote.gov.taipei:8502/jpg/382', 'https://monitor1.wfuapp.com/2024/01/c.html', ['地標']],
     ['台中大里塗城', '台中', 'c', 'UCE8omMvpPxleZ42Mk2MHQhQ', 'https://monitor1.wfuapp.com/2024/01/d.html', ['路況']],
     ['花蓮馬太鞍溪橋', '花蓮', 'i', 'https://fmg.wra.gov.tw/singlefmg/new/7703/newbig.jpg', 'https://monitor1.wfuapp.com/2024/01/e.html', ['橋樑', '颱風海象']],
+    ['苗栗台61線', '苗栗', 'i', 'https://cctv-ss04.thb.gov.tw/T61-122K+560', 'https://monitor1.wfuapp.com/2024/01/f.html', ['路況']],
     ['怪資料', '台東', 'y', '"><script>', 'javascript:alert(1)', ['颱風海象']]] };
 
 test('即時影像 › 景點海象（v93）：預設列颱風海象、站臺所在縣市排最前；YouTube 在 App 裡播、禁止嵌入的外連、截圖輪播；關掉就停', async ({ page }) => {
@@ -2925,6 +2926,14 @@ test('即時影像 › 景點海象（v93）：預設列颱風海象、站臺所
   await page.locator('#wfuList .cam-chip', { hasText: '大巨蛋' }).click();
   await expect(page.locator('#shBody')).toContainText('每 10 秒更新一張');
   await expect.poll(() => reqs[0]).toMatch(/^https:\/\/cctv\.bote\.gov\.taipei:8502\/jpg\/382\?_t=\d+$/);
+  await page.locator('#shClose').click();
+  // 「截圖」欄裡其實是串流的（省道）：直接播，不加時間參數、不每 10 秒重連
+  await page.locator('#wfuCty').selectOption('苗栗');
+  const thb = [];
+  page.on('request', q => { if (/thb\.gov\.tw/.test(q.url())) thb.push(q.url()); });
+  await page.locator('#wfuList .cam-chip').first().click();
+  await expect.poll(() => thb[0]).toBe('https://cctv-ss04.thb.gov.tw/T61-122K+560');
+  await expect(page.locator('#shBody')).not.toContainText('每 10 秒更新一張');
   await page.locator('#shClose').click();
   // 頻道直播：用頻道的 live_stream 嵌入
   await page.locator('#wfuCty').selectOption('台中');

@@ -13,16 +13,20 @@
 - data-gif：政府監視器的單張截圖網址（約 595 則：水利署河川、臺北市交通…）
 沒有座標，只有分類標籤（縣市、颱風海象、港口…），所以不上地圖、照縣市分組。
 
-**YouTube 先驗一次**
-用 YouTube 官方 oEmbed：404＝影片已下架或轉私人，不收；401／403＝擁有者禁止嵌入，標成只能外連（到 YouTube 看）。
-oEmbed 本身連不到（網路錯）時不當成下架，照樣收——寧可讓使用者點了才發現，也不要整批誤刪。
+**YouTube 先驗兩道**
+1. 官方 oEmbed：404＝影片已下架或轉私人，不收；401／403＝擁有者禁止嵌入，標成只能外連（到 YouTube 看）。
+2. 影片頁的播放狀態（v94）：oEmbed 分不出「直播已經結束」。2026-10-26 抽樣 25 支，14 支是結束的直播
+   （YouTube 寫「無法播放這部直播影片的錄影存檔」），部落格還留著舊影片 ID。確定結束的改用同頻道「現在的直播」
+   （頻道 live_stream 嵌入；頻道還在播就看得到），頁面上找不到頻道的才剔除。
+YouTube 對資料中心 IP 常要求「確認不是機器人」，那種判斷不了的照收；網路錯也照收——
+寧可讓使用者點了才發現，也不要整批誤刪。
 
 **只留手機看得到的**
 截圖網址要 https、不是內網位址（http 的影像在 https 網頁裡會被瀏覽器擋）。
 
 輸出 data/wfu.json：
   {"v":1, "src":"WFU", "updated":"…", "total":N, "dropped":{"http":…,"private":…,"gone":…,"nosrc":…},
-   "yt":{"ok":…,"noembed":…,"gone":…,"unchecked":…},
+   "yt":{"ok":…,"noembed":…,"gone":…,"relive":…,"ended":…,"unchecked":…},
    "items":[[標題, 縣市, 種類, 來源, 原文網址, [標籤…]], …], "cite":"…"}
   種類：y＝YouTube 影片（可嵌入）、x＝YouTube 影片（禁止嵌入，只能外連）、c＝YouTube 頻道直播、i＝單張截圖
 
@@ -41,7 +45,7 @@ from urllib.request import Request, urlopen
 
 FEED = os.environ.get("WFU_FEED", "https://monitor1.wfuapp.com/feeds/posts/default")
 OUT = os.environ.get("WFU_OUT", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "wfu.json"))
-YT_SEC = float(os.environ.get("WFU_YT_SEC", "300"))      # oEmbed 驗證的時間預算；超過的先照收、標成沒驗
+YT_SEC = float(os.environ.get("WFU_YT_SEC", "480"))      # YouTube 驗證的時間預算；超過的先照收、標成沒驗
 PAGE = 150                                               # Blogger 摘要一頁最多 150 則
 TW = timezone(timedelta(hours=8))
 UA = "Mozilla/5.0 (compatible; data-fetch/1.0)"
@@ -54,8 +58,8 @@ def now_iso():
     return datetime.now(TW).isoformat(timespec="seconds")
 
 
-def get(url, timeout=30):
-    with urlopen(Request(url, headers={"User-Agent": UA}), timeout=timeout) as r:
+def get(url, timeout=30, headers=None):
+    with urlopen(Request(url, headers={"User-Agent": UA, **(headers or {})}), timeout=timeout) as r:
         return r.read(20_000_000).decode("utf-8", "replace")
 
 
@@ -91,6 +95,8 @@ def parse_entry(e):
         ok, why = https_ok(a["gif"])
         if not ok:
             return None, why
+        if urlsplit(a["gif"]).hostname.endswith("googleusercontent.com"):
+            return None, "nosrc"                 # 部落格自己的靜態縮圖，不是即時影像
         kind, src = "i", a["gif"]
     else:
         return None, "nosrc"
@@ -130,6 +136,28 @@ def oembed(vid, timeout=15):
         return 0
 
 
+def watch(vid, timeout=20):
+    """影片頁的播放狀態 → (狀態, 頻道 ID)。狀態：ended＝直播已結束、無法播放；ok＝可以播；unknown＝判斷不了。
+    只認「播放狀態 UNPLAYABLE、而且是直播內容、而且現在沒在播」才算結束——
+    同樣是 UNPLAYABLE 的「這個國家／地區無法觀看」不能誤判成結束（Actions 在美國，臺灣限定的直播會這樣）。"""
+    try:
+        h = get(f"https://www.youtube.com/watch?v={vid}", timeout,
+                {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36",
+                 "Accept-Language": "zh-TW,zh;q=0.9", "Cookie": "CONSENT=YES+cb; SOCS=CAI"})
+    except Exception:
+        return "unknown", ""
+    st = re.search(r'"playabilityStatus":\{"status":"(\w+)"', h)
+    ch = re.search(r'"channelId":"(UC[\w-]{22})"', h)
+    content = re.search(r'"isLiveContent":(true|false)', h)
+    now = re.search(r'"isLiveNow":(true|false)', h)
+    ch = ch.group(1) if ch else ""
+    if st and st.group(1) == "UNPLAYABLE" and content and content.group(1) == "true" and now and now.group(1) == "false":
+        return "ended", ch
+    if st and st.group(1) == "OK":
+        return "ok", ch
+    return "unknown", ch
+
+
 def load_prev():
     try:
         with open(OUT, encoding="utf-8") as f:
@@ -139,7 +167,7 @@ def load_prev():
         return None
 
 
-def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep):
+def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep, look=watch):
     try:
         ents = fetch_all(getter)
     except Exception as e:
@@ -156,7 +184,7 @@ def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep):
             items.append(list(it))
         else:
             dropped[why] += 1
-    yt = {"ok": 0, "noembed": 0, "gone": 0, "unchecked": 0}
+    yt = {"ok": 0, "noembed": 0, "gone": 0, "relive": 0, "ended": 0, "unchecked": 0}
     end = clock() + YT_SEC
     keep = []
     for it in items:
@@ -174,7 +202,17 @@ def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep):
                     it[2] = "x"
                     yt["noembed"] += 1
                 elif st == 200:
-                    yt["ok"] += 1
+                    w, ch = look(it[3])
+                    sleep(0.3)
+                    if w == "ended" and ch:
+                        it[2], it[3] = "c", ch           # 直播重開會換影片 ID，看頻道「現在的直播」
+                        yt["relive"] += 1
+                    elif w == "ended":
+                        yt["ended"] += 1
+                        dropped["gone"] += 1
+                        continue
+                    else:
+                        yt["ok" if w == "ok" else "unchecked"] += 1
                 else:
                     yt["unchecked"] += 1
         keep.append(it)
@@ -189,7 +227,8 @@ def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep):
     with open(OUT + ".tmp", "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(OUT + ".tmp", OUT)
-    print(f"寫出 {len(keep)} 支（YouTube 可嵌入 {yt['ok']}、禁止嵌入 {yt['noembed']}、已下架 {yt['gone']}、沒驗到 {yt['unchecked']}；"
+    print(f"寫出 {len(keep)} 支（YouTube 可播 {yt['ok']}、禁止嵌入 {yt['noembed']}、已下架 {yt['gone']}、"
+          f"直播結束改看頻道 {yt['relive']}、結束又找不到頻道 {yt['ended']}、判斷不了 {yt['unchecked']}；"
           f"濾掉 http {dropped['http']}、內網 {dropped['private']}、不是影像 {dropped['nosrc']}）")
     return 0
 
@@ -220,6 +259,7 @@ def selftest():
         ent("台北大巨蛋即時影像", 'data-group="台北1" data-temp="gy6fjztAkKQ" data-temp="https://x/y.jpg" data-gif="https://cctv.bote.gov.taipei:8502/jpg/382"', ["影像", "台北", "地標", "信義區"]),
         ent("舊的 http 截圖即時影像", 'data-group="x" data-gif="http://117.56.220.2/jpg/1"', ["影像", "新北"]),
         ent("內網截圖即時影像", 'data-group="x" data-gif="https://192.168.1.5/jpg/1"', ["影像", "新北"]),
+        ent("只有縮圖的即時影像", 'data-group="x" data-gif="https://blogger.googleusercontent.com/img/a/AVvX"', ["影像", "新北"]),
         {"title": {"$t": "外島即時影像篩選器"}, "category": [], "link": [], "content": {"$t": "<style>.x{}</style>"}},
         ent("沒有縣市的即時影像", 'data-group="x" data-id="nocounty000"', ["影像", "景點"]),
     ]
@@ -238,10 +278,14 @@ def selftest():
     def oe(vid):
         checked.append(vid)
         return status.get(vid, 200)
+    watchs = {"abcdefghijk": ("ok", "UCaaaaaaaaaaaaaaaaaaaaaa")}
+
+    def lk(vid):
+        return watchs.get(vid, ("unknown", ""))
 
     with tempfile.TemporaryDirectory() as tmp:
         OUT = os.path.join(tmp, "wfu.json")
-        check(run(g1, oe, sleep=lambda s: None) == 0, "正常跑完、寫出檔案")
+        check(run(g1, oe, sleep=lambda s: None, look=lk) == 0, "正常跑完、寫出檔案")
         d = load_prev()
         names = [x[0] for x in d["items"]]
         check(d["total"] == 6 and "南投某景點" not in names, f"留 6 支、已下架的 YouTube 剔除：{names}")
@@ -253,8 +297,8 @@ def selftest():
         check(it["花蓮馬太鞍溪橋"][2:4] == ["i", "https://fmg.wra.gov.tw/singlefmg/new/7703/newbig.jpg"], "政府截圖 → 種類 i")
         check(it["台北大巨蛋"][3] == "https://cctv.bote.gov.taipei:8502/jpg/382" and "信義區" not in it["台北大巨蛋"][5],
               "重複的 data-temp 不干擾；行政區標籤不留")
-        check(d["dropped"] == {"http": 1, "private": 1, "gone": 1, "nosrc": 1}, f"濾掉的各記一筆：{d['dropped']}")
-        check(d["yt"] == {"ok": 1, "noembed": 1, "gone": 1, "unchecked": 1}, f"oEmbed 連不到的照收、記成沒驗：{d['yt']}")
+        check(d["dropped"] == {"http": 1, "private": 1, "gone": 1, "nosrc": 2}, f"濾掉的各記一筆（部落格縮圖、篩選器頁算不是影像）：{d['dropped']}")
+        check(d["yt"] == {"ok": 1, "noembed": 1, "gone": 1, "relive": 0, "ended": 0, "unchecked": 1}, f"oEmbed 連不到的照收、記成沒驗：{d['yt']}")
         check(it["沒有縣市的"][1] == "" and names[-1] == "沒有縣市的", "沒有縣市標籤的排最後")
         check(names.index("基隆海洋廣場") < names.index("台北大巨蛋") < names.index("台中大里塗城"), "照縣市（北到南）排序")
         check(d["cite"].startswith("清單整理：WFU"), "附出處")
@@ -267,7 +311,7 @@ def selftest():
             pages.append(url)
             s = int(re.search(r"start-index=(\d+)", url).group(1))
             return feed(many[s - 1:s - 1 + PAGE])
-        run(g2, oe, sleep=lambda s: None)
+        run(g2, oe, sleep=lambda s: None, look=lk)
         check(len(pages) == 2 and load_prev()["total"] == PAGE + 3, "超過 150 則會翻頁抓完")
 
         # 時間預算用完：剩下的 YouTube 先照收、標成沒驗
@@ -275,10 +319,26 @@ def selftest():
         YT_SEC = 150
         yts = [ent(f"直播{i}即時影像", f'data-id="vid{i:08d}"', ["影像", "基隆"]) for i in range(5)]
         checked.clear()
-        run(lambda u: feed(yts), oe, clock=lambda: next(tick), sleep=lambda s: None)
+        run(lambda u: feed(yts), oe, clock=lambda: next(tick), sleep=lambda s: None, look=lk)
         d = load_prev()
-        check(len(checked) == 1 and d["yt"]["unchecked"] == 4 and d["total"] == 5, f"超過預算的先照收：{d['yt']}")
-        YT_SEC = 300
+        # 第一支驗過 oEmbed、影片頁判斷不了；其餘 4 支超過預算沒驗——5 支都照收
+        check(len(checked) == 1 and d["yt"]["unchecked"] == 5 and d["total"] == 5, f"超過預算的先照收：{d['yt']}")
+        YT_SEC = 480
+
+        # 直播已結束：找得到頻道的改看頻道現在的直播；找不到的剔除；判斷不了（要確認不是機器人）的照收
+        lv = [ent("結束有頻道即時影像", 'data-id="endedch0000"', ["影像", "基隆"]),
+              ent("結束沒頻道即時影像", 'data-id="endednoch00"', ["影像", "基隆"]),
+              ent("要確認機器人即時影像", 'data-id="botcheck000"', ["影像", "基隆"]),
+              ent("正在播即時影像", 'data-id="livenow0000"', ["影像", "基隆"])]
+        watchs.update({"endedch0000": ("ended", "UCbbbbbbbbbbbbbbbbbbbbbb"), "endednoch00": ("ended", ""),
+                       "livenow0000": ("ok", "UCcccccccccccccccccccccc")})
+        run(lambda u: feed(lv), oe, sleep=lambda s: None, look=lk)
+        d = load_prev()
+        it = {x[0]: x for x in d["items"]}
+        check(it["結束有頻道"][2:4] == ["c", "UCbbbbbbbbbbbbbbbbbbbbbb"], "直播已結束、頁面有頻道：改成看頻道現在的直播")
+        check("結束沒頻道" not in it and d["yt"]["ended"] == 1, "直播已結束又找不到頻道：剔除")
+        check(it["要確認機器人"][2] == "y" and it["正在播"][2] == "y", "判斷不了的、正在播的：照原影片收")
+        check(d["yt"] == {"ok": 1, "noembed": 0, "gone": 0, "relive": 1, "ended": 1, "unchecked": 1}, f"計數：{d['yt']}")
 
         def gdown(url):
             raise URLError("timeout")
@@ -286,7 +346,7 @@ def selftest():
         check(run(gdown, oe) == 0 and open(OUT, encoding="utf-8").read() == before, "部落格連不到、手上有舊清單：不紅燈、不覆寫")
         os.remove(OUT)
         check(run(gdown, oe) == 1 and not os.path.exists(OUT), "連不到也沒有舊清單：紅燈，不交空檔")
-        check(run(lambda u: feed([E[8]]), oe) == 1 and not os.path.exists(OUT), "格式變了、一支都整理不出來：紅燈，不交空檔")
+        check(run(lambda u: feed([E[9]]), oe) == 1 and not os.path.exists(OUT), "格式變了、一支都整理不出來：紅燈，不交空檔")
     print(f"全部通過（{okn} 項）")
     return 0
 

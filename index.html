@@ -1994,7 +1994,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v93';
+const APP_VER = 'v94';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -8443,7 +8443,10 @@ function wfuCam(it) {
     c.url = `https://www.youtube.com/channel/${ref}/live`;
     c.embed = `https://www.youtube.com/embed/live_stream?channel=${ref}&autoplay=1&mute=1&playsinline=1`;
   } else if (k === 'i' && /^https:\/\//.test(ref)) {
-    c.img = ref; c.url = '';
+    /* 部落格的「截圖」欄其實一半以上是 MJPEG 串流（省道、新北、臺北）。真正的單張圖才每 10 秒換一張；
+       串流交給監視器同一套判斷（標準串流直接播、基隆那家改抓 /snapshot），不然每 10 秒就斷線重連一次 */
+    if (/\/snapshot(\?|$)|\.(jpe?g|png|gif)(\?|$)|\/jpg\/|image_cctv/i.test(ref)) { c.img = ref; c.url = ''; }
+    else c.url = ref;
   } else return null;
   return c;
 }
