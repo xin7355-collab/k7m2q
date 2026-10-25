@@ -1969,7 +1969,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v90';
+const APP_VER = 'v91';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -8205,13 +8205,17 @@ async function renderCams() {
     attribution: '&copy; OpenStreetMap 貢獻者, &copy; CARTO' }).addTo(CAMMAP);
   // 六千多個點用 canvas 畫；手指點不準，點擊容許範圍放大到 10 px
   const rend = L.canvas({ padding: 0.3, tolerance: 10 });
-  CAMS.forEach((c, i) => L.circleMarker([c.lat, c.lng], { renderer: rend, radius: 4, weight: 1, color: '#040A10',
+  // 縮小看全臺時點要小，不然北部、西部擠成一整片白；放大到街道才放大好點
+  const camR = () => { const z = CAMMAP.getZoom(); return z <= 8 ? 2 : z <= 11 ? 3.5 : 5; };
+  const dots = CAMS.map((c, i) => L.circleMarker([c.lat, c.lng], { renderer: rend, radius: 2, weight: 1, color: '#040A10',
     fillColor: camCol(c.g), fillOpacity: 0.9 }).on('click', () => openCam(i)).addTo(CAMMAP));
+  CAMMAP.on('zoomend', () => { const r = camR(); dots.forEach(d => d.setRadius(r)); });
   sts.forEach(s => L.marker([s.lat, s.lng], { icon: stPin(s, typeOf(s.type)), zIndexOffset: 800 })
     .bindTooltip(s.name, { permanent: true, direction: 'bottom', className: 'cam-sttip' }).addTo(CAMMAP));
   // 有站臺就框站臺（颱風天看的是自己附近），沒有就看全臺
   if (sts.length > 1) CAMMAP.fitBounds(L.latLngBounds(sts.map(s => [s.lat, s.lng])).pad(0.25));
   else if (sts.length === 1) CAMMAP.setView([sts[0].lat, sts[0].lng], 12);
+  { const r = camR(); dots.forEach(d => d.setRadius(r)); }
   setTimeout(() => CAMMAP && CAMMAP.invalidateSize(), 80);
 }
 let _camTimer = 0;
