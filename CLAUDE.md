@@ -78,11 +78,15 @@
   `scripts/fetch_cctv.py` + `.github/workflows/cctv.yml`（每週二、五從交通部 TDX 抓國道／省道／各縣市監視器清單 `data/cctv.json`，
   給「即時影像 › 監視器」地圖；不帶金鑰每 IP 每天 20 次，分批輪抓。畫面直連原機關：臺中播放頁由後端解析成 MJPEG 直連；基隆、臺東這家 Safari 解不開的 MJPEG 改抓同主機 /snapshot 輪播；臺北新北等只有播放頁的直接外連；tw.live 不能內嵌，只做「附近影像」外連）、
   `scripts/fetch_wfu.py` + `.github/workflows/wfu.yml`（每天把 WFU「台灣景點人潮即時影像」部落格的公開摘要整理成 `data/wfu.json`，
-  給「即時影像 › 景點海象」：YouTube 官方嵌入／政府截圖輪播；沒有座標所以照縣市分組；畫面標「清單整理：WFU」並連回原文）、
+  給「即時影像 › 景點海象」：YouTube 官方嵌入／政府截圖輪播；沒有座標所以照縣市分組；畫面標「清單整理：WFU」並連回原文。
+  已結束的直播：有 `YT_API_KEY` 就照頻道現正直播的標題換新 ID，沒有就標「已結束」連到頻道 /streams；禁止嵌入的 YouTube 管不了，只能外連）、
+  `scripts/build_region.py` → `assets/region.json`（鄉鎮界線轉 0.005° 格網，前端離線查座標在哪個縣市鄉鎮，給即時影像搜尋的區域篩選；
+  `python3 scripts/build_region.py build` 重產；即時影像打不開的記在本機 3 天 `galepost.camstat`，清單與地圖標紅並寫原因）、
   `scripts/build_tyhist.py` + `.github/workflows/tyhist.yml`（每週從 IBTrACS 建 `data/tyhist.json`，名牌的「今年／歷史第幾強」）、
   `assets/coast.json`（戰情圖離線海岸線，`python3 scripts/build_coast.py build` 重產）、
   `e2e/`（Playwright 測試，`npm test`）。每輪做了什麼寫在 commit 內文（`git log`），不另放紀錄檔。
 - 需要的 Secrets：`CWA_API_KEY`（中央氣象署授權碼；沒設時落雷與颱風後端檔都是 `hasKey:false` 空殼）。
+  選用 `YT_API_KEY`（YouTube Data API v3，免費額度、每天用約 200／10,000 單位；沒設時 wfu 照樣跑，只是已結束的直播不會自動換新）。
 - 部署在哪：GitHub Pages（https://xin7355-collab.github.io/k7m2q/；2026-10-24 使用者要求 repo 從 GALEPOST 改名成無意義的 k7m2q、
   git 歷史壓成一筆，舊網址失效），從 `claude/feng-shao-lgn3wn` 分支部署；
   落雷機器人也直接推這支，合併前先 fetch。

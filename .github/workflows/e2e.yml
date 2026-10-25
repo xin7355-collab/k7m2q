@@ -64,6 +64,7 @@ jobs:
           python3 scripts/fetch_wx.py selftest
           python3 scripts/build_tyhist.py selftest
           python3 scripts/build_coast.py selftest
+          python3 scripts/build_region.py selftest
           python3 scripts/fetch_gate.py selftest
           python3 scripts/fetch_ens.py selftest
           python3 scripts/fetch_ecens.py selftest

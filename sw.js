@@ -9,7 +9,7 @@
  * 這裡刻意不做 retry:Service Worker 只是轉手,重試由頁面端的 getJSON 負責
  * （429／5xx 退避）。兩層都重試的話,一次失敗會被放大成好幾倍的請求。
  */
-const CACHE = 'galepost-v94';
+const CACHE = 'galepost-v95';
 const SHELL = [
   './',
   './index.html',
@@ -20,6 +20,7 @@ const SHELL = [
   './data/typhoon.json',
   // 戰情圖的海岸線：跟程式一起快取,完全離線也畫得出臺灣與周邊陸地
   './assets/coast.json',
+  './assets/region.json',
   // Leaflet 收在站內,不再走 CDN:第一次安裝之後離線也開得出地圖。
   // 圖磚仍然要連網,但地圖框架與控制項本身不會再因為斷線而整個消失。
   './vendor/leaflet/leaflet.js',

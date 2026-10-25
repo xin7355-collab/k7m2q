@@ -16,19 +16,29 @@
 **YouTube 先驗兩道**
 1. 官方 oEmbed：404＝影片已下架或轉私人，不收；401／403＝擁有者禁止嵌入，標成只能外連（到 YouTube 看）。
 2. 影片頁的播放狀態（v94）：oEmbed 分不出「直播已經結束」。2026-10-26 抽樣 25 支，14 支是結束的直播
-   （YouTube 寫「無法播放這部直播影片的錄影存檔」），部落格還留著舊影片 ID。確定結束的改用同頻道「現在的直播」
-   （頻道 live_stream 嵌入；頻道還在播就看得到），頁面上找不到頻道的才剔除。
+   （YouTube 寫「無法播放這部直播影片的錄影存檔」），部落格還留著舊影片 ID。
 YouTube 對資料中心 IP 常要求「確認不是機器人」，那種判斷不了的照收；網路錯也照收——
 寧可讓使用者點了才發現，也不要整批誤刪。
+
+**直播結束之後（v95）**
+v94 把結束的一律改成「同頻道現在的直播」，但 151 個頻道裡有 34 個一個頻道掛好幾支鏡頭（例如苗栗通霄的
+日落大道和海水浴場同一個頻道），頻道直播只會播其中一支——使用者 10/26 點「日落大道」看到的是錯的或「無法播放」。
+- 頻道只掛這一支：改看頻道現在的直播（c）。
+- 頻道掛好幾支：不亂猜，標成「已結束」（e），點了到 YouTube 頻道的直播列表自己挑。
+- 有 YouTube Data API 金鑰（repo Secret YT_API_KEY）時：從頻道的上傳清單找出「現在正在直播」的影片，
+  用標題比對對回每一支鏡頭，對得上就直接換成新的影片 ID（y）。一天約 200 點，免費額度 1 萬點。
+  頻道 RSS（/feeds/videos.xml）本來也能找，但 2026-10-26 實測對這些頻道一律回 404／500，不能用。
+  金鑰用 X-Goog-Api-Key 標頭傳，不放網址（網址會進錯誤訊息與紀錄）。
 
 **只留手機看得到的**
 截圖網址要 https、不是內網位址（http 的影像在 https 網頁裡會被瀏覽器擋）。
 
 輸出 data/wfu.json：
   {"v":1, "src":"WFU", "updated":"…", "total":N, "dropped":{"http":…,"private":…,"gone":…,"nosrc":…},
-   "yt":{"ok":…,"noembed":…,"gone":…,"relive":…,"ended":…,"unchecked":…},
+   "yt":{"ok":…,"noembed":…,"gone":…,"live":…,"relive":…,"ended":…,"unchecked":…,"api":true|false},
    "items":[[標題, 縣市, 種類, 來源, 原文網址, [標籤…]], …], "cite":"…"}
-  種類：y＝YouTube 影片（可嵌入）、x＝YouTube 影片（禁止嵌入，只能外連）、c＝YouTube 頻道直播、i＝單張截圖
+  種類：y＝YouTube 影片（可嵌入）、x＝YouTube 影片（禁止嵌入，只能外連）、c＝YouTube 頻道直播、
+        e＝直播已結束（來源是頻道 ID，連到頻道的直播列表）、i＝單張截圖或串流
 
 離線自我測試：python3 scripts/fetch_wfu.py selftest
 """
@@ -40,13 +50,14 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 
 FEED = os.environ.get("WFU_FEED", "https://monitor1.wfuapp.com/feeds/posts/default")
 OUT = os.environ.get("WFU_OUT", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "wfu.json"))
 YT_SEC = float(os.environ.get("WFU_YT_SEC", "480"))      # YouTube 驗證的時間預算；超過的先照收、標成沒驗
 PAGE = 150                                               # Blogger 摘要一頁最多 150 則
+YT_KEY = os.environ.get("YT_API_KEY", "").strip()        # 選用；沒設就走沒有金鑰的做法
 TW = timezone(timedelta(hours=8))
 UA = "Mozilla/5.0 (compatible; data-fetch/1.0)"
 # 標籤裡的縣市（部落格用「台」字、新竹／嘉義不分縣市、連江寫馬祖）
@@ -79,7 +90,7 @@ def https_ok(u):
 
 
 def parse_entry(e):
-    """一則摘要 → (標題, 縣市, 種類, 來源, 原文網址, 標籤) 或 (None, 濾掉的原因)。"""
+    """一則摘要 → (標題, 縣市, 種類, 來源, 原文網址, 標籤, 節目名) 或 (None, 濾掉的原因)。節目名只拿來對 YouTube 標題，不輸出。"""
     c = ((e.get("content") or e.get("summary") or {}).get("$t")) or ""
     m = re.search(r'<p class="empty_p"([^>]*)>', c)
     if not m:
@@ -107,7 +118,8 @@ def parse_entry(e):
     link = next((l.get("href", "") for l in e.get("link") or [] if l.get("rel") == "alternate"), "")
     if not title:
         return None, "nosrc"
-    return (title, county, kind, src, link, tags), ""
+    prog = re.sub(r"\(YT\)|（YT）", "", a.get("program", "")).strip()
+    return (title, county, kind, src, link, tags, prog), ""
 
 
 def fetch_all(getter=get):
@@ -158,6 +170,78 @@ def watch(vid, timeout=20):
     return "unknown", ch
 
 
+def yt_api(path, params, timeout=20):
+    return json.loads(get("https://www.googleapis.com/youtube/v3/" + path + "?" + urlencode(params), timeout,
+                          {"X-Goog-Api-Key": YT_KEY}))
+
+
+def api_videos(ids, api=yt_api):
+    """影片 ID → (狀態, 頻道 ID)；狀態 live／ended／noembed／ok。查不到的不回（當成下架）。一次 50 支、1 點。"""
+    out = {}
+    for k in range(0, len(ids), 50):
+        d = api("videos", {"part": "snippet,status,liveStreamingDetails", "id": ",".join(ids[k:k + 50])})
+        for v in d.get("items") or []:
+            sn, st, ls = v.get("snippet") or {}, v.get("status") or {}, v.get("liveStreamingDetails") or {}
+            if st.get("embeddable") is False:
+                state = "noembed"
+            elif sn.get("liveBroadcastContent") == "live":
+                state = "live"
+            elif ls.get("actualEndTime"):
+                state = "ended"
+            else:
+                state = "ok"
+            out[v["id"]] = (state, sn.get("channelId", ""), sn.get("title", ""))
+    return out
+
+
+def api_lives(chs, api=yt_api):
+    """頻道 → [(影片 ID, 標題), …]：上傳清單最新 25 支裡現在正在直播、可嵌入的。頻道一支 1 點。"""
+    vids = []
+    for ch in chs:
+        try:
+            d = api("playlistItems", {"part": "contentDetails", "playlistId": "UU" + ch[2:], "maxResults": 25})
+        except HTTPError:
+            continue                              # 頻道關了、沒有上傳清單
+        vids += [x["contentDetails"]["videoId"] for x in d.get("items") or [] if x.get("contentDetails")]
+    lives = {}
+    for vid, (state, ch, title) in api_videos(vids, api).items():
+        if state == "live":
+            lives.setdefault(ch, []).append((vid, title))
+    return lives
+
+
+def _norm(s):
+    return re.sub(r"[\W_]+", "", (s or "").replace("臺", "台")).lower()
+
+
+def _lcs(a, b):
+    """最長共同子字串長度（標題都很短，直接動態規劃）。"""
+    best, prev = 0, [0] * (len(b) + 1)
+    for ca in a:
+        cur = [0] * (len(b) + 1)
+        for j, cb in enumerate(b, 1):
+            if ca == cb:
+                cur[j] = prev[j - 1] + 1
+                best = max(best, cur[j])
+        prev = cur
+    return best
+
+
+def match_lives(its, lives):
+    """一個頻道的幾支鏡頭 ↔ 這個頻道正在播的幾支直播，用標題對。回傳 {鏡頭序號: 影片 ID}。
+    只有一支鏡頭、一支直播時直接對；其他要共同字串至少 2 個字，而且比第二名多，才算對上——對不上寧可不換。"""
+    if len(its) == 1 and len(lives) == 1:
+        return {0: lives[0][0]}
+    out, used = {}, set()
+    for k, it in enumerate(its):
+        key = _norm(it[6] or it[0].replace(it[1], "", 1))
+        sc = sorted(((_lcs(key, _norm(t)), vid) for vid, t in lives if vid not in used), reverse=True)
+        if sc and sc[0][0] >= 2 and (len(sc) == 1 or sc[0][0] > sc[1][0]):
+            out[k] = sc[0][1]
+            used.add(sc[0][1])
+    return out
+
+
 def load_prev():
     try:
         with open(OUT, encoding="utf-8") as f:
@@ -167,7 +251,8 @@ def load_prev():
         return None
 
 
-def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep, look=watch):
+def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep, look=watch, api=yt_api, key=None):
+    key = YT_KEY if key is None else key
     try:
         ents = fetch_all(getter)
     except Exception as e:
@@ -184,16 +269,42 @@ def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep, look=w
             items.append(list(it))
         else:
             dropped[why] += 1
-    yt = {"ok": 0, "noembed": 0, "gone": 0, "relive": 0, "ended": 0, "unchecked": 0}
+    yt = {"ok": 0, "noembed": 0, "gone": 0, "live": 0, "relive": 0, "ended": 0, "unchecked": 0, "api": bool(key)}
     end = clock() + YT_SEC
-    keep = []
+    keep, ended, chan_of = [], [], {}
+    states = {}
+    if key:
+        try:
+            states = api_videos([it[3] for it in items if it[2] == "y"], api)
+        except Exception as e:
+            # 金鑰錯、額度用完：不紅燈，這一輪退回沒有金鑰的做法（金鑰本身不印）
+            print(f"YouTube API 用不了（{type(e).__name__}），這一輪改用影片頁判斷")
+            key = ""
+            yt["api"] = False
     for it in items:
+        if it[2] == "c":
+            chan_of[id(it)] = it[3]
         if it[2] == "y":
-            if clock() > end:
+            if key:
+                st = states.get(it[3])
+                if not st:                           # API 查不到＝已下架或轉私人
+                    yt["gone"] += 1
+                    dropped["gone"] += 1
+                    continue
+                state, ch, _ = st
+                chan_of[id(it)] = ch
+                if state == "noembed":
+                    it[2] = "x"
+                    yt["noembed"] += 1
+                elif state == "ended":
+                    ended.append(it)
+                else:
+                    yt["ok"] += 1
+            elif clock() > end:
                 yt["unchecked"] += 1
             else:
                 st = check(it[3])
-                sleep(0.2)                       # 一秒五支，別一口氣打滿
+                sleep(0.2)                           # 一秒五支，別一口氣打滿
                 if st == 404:
                     yt["gone"] += 1
                     dropped["gone"] += 1
@@ -204,18 +315,49 @@ def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep, look=w
                 elif st == 200:
                     w, ch = look(it[3])
                     sleep(0.3)
-                    if w == "ended" and ch:
-                        it[2], it[3] = "c", ch           # 直播重開會換影片 ID，看頻道「現在的直播」
-                        yt["relive"] += 1
-                    elif w == "ended":
-                        yt["ended"] += 1
-                        dropped["gone"] += 1
-                        continue
+                    if ch:
+                        chan_of[id(it)] = ch
+                    if w == "ended":
+                        ended.append(it)
                     else:
                         yt["ok" if w == "ok" else "unchecked"] += 1
                 else:
                     yt["unchecked"] += 1
         keep.append(it)
+    # 每個頻道掛了幾支鏡頭（原本就是頻道的＋確定結束的）
+    by_ch = {}
+    for it in keep:
+        ch = chan_of.get(id(it))
+        if ch and (it[2] == "c" or it in ended):
+            by_ch.setdefault(ch, []).append(it)
+    mapped = set()
+    if key and by_ch:
+        try:
+            lives = api_lives(list(by_ch), api)
+        except Exception as e:
+            print(f"YouTube API 找直播失敗（{type(e).__name__}），這一輪不換新的影片 ID")
+            lives = {}
+        for ch, its in by_ch.items():
+            for k, vid in match_lives(its, lives.get(ch) or []).items():
+                its[k][2], its[k][3] = "y", vid
+                mapped.add(id(its[k]))
+                yt["live"] += 1
+    out = []
+    for it in keep:
+        if it in ended and id(it) not in mapped:
+            ch = chan_of.get(id(it))
+            if not ch:
+                yt["ended"] += 1                     # 結束了又不知道頻道：沒地方可連，剔除
+                dropped["gone"] += 1
+                continue
+            if len(by_ch.get(ch) or []) == 1:
+                it[2], it[3] = "c", ch               # 頻道只掛這一支：頻道現在的直播就是它
+                yt["relive"] += 1
+            else:
+                it[2], it[3] = "e", ch               # 頻道掛好幾支：不亂猜，到頻道的直播列表自己挑
+                yt["ended"] += 1
+        out.append(it[:6])
+    keep = out
     if not keep:
         print(f"錯誤：摘要有 {len(ents)} 則，卻整理不出任何一支影像（格式可能改了）；不覆寫舊檔")
         return 1
@@ -227,15 +369,17 @@ def run(getter=get, check=oembed, clock=time.monotonic, sleep=time.sleep, look=w
     with open(OUT + ".tmp", "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
     os.replace(OUT + ".tmp", OUT)
-    print(f"寫出 {len(keep)} 支（YouTube 可播 {yt['ok']}、禁止嵌入 {yt['noembed']}、已下架 {yt['gone']}、"
-          f"直播結束改看頻道 {yt['relive']}、結束又找不到頻道 {yt['ended']}、判斷不了 {yt['unchecked']}；"
+    print(f"寫出 {len(keep)} 支（YouTube {'有' if yt['api'] else '沒有'}金鑰：可播 {yt['ok']}、禁止嵌入 {yt['noembed']}、"
+          f"已下架 {yt['gone']}、結束後找到新直播 {yt['live']}、結束改看頻道 {yt['relive']}、結束標已結束 {yt['ended']}、"
+          f"判斷不了 {yt['unchecked']}；"
           f"濾掉 http {dropped['http']}、內網 {dropped['private']}、不是影像 {dropped['nosrc']}）")
     return 0
 
 
 def selftest():
-    global OUT, YT_SEC
+    global OUT, YT_SEC, YT_KEY
     import tempfile
+    YT_KEY = ""                                   # 自我測試一律不打真的 API
     okn = 0
 
     def check(cond, msg):
@@ -298,7 +442,8 @@ def selftest():
         check(it["台北大巨蛋"][3] == "https://cctv.bote.gov.taipei:8502/jpg/382" and "信義區" not in it["台北大巨蛋"][5],
               "重複的 data-temp 不干擾；行政區標籤不留")
         check(d["dropped"] == {"http": 1, "private": 1, "gone": 1, "nosrc": 2}, f"濾掉的各記一筆（部落格縮圖、篩選器頁算不是影像）：{d['dropped']}")
-        check(d["yt"] == {"ok": 1, "noembed": 1, "gone": 1, "relive": 0, "ended": 0, "unchecked": 1}, f"oEmbed 連不到的照收、記成沒驗：{d['yt']}")
+        check(d["yt"] == {"ok": 1, "noembed": 1, "gone": 1, "live": 0, "relive": 0, "ended": 0, "unchecked": 1, "api": False},
+              f"oEmbed 連不到的照收、記成沒驗：{d['yt']}")
         check(it["沒有縣市的"][1] == "" and names[-1] == "沒有縣市的", "沒有縣市標籤的排最後")
         check(names.index("基隆海洋廣場") < names.index("台北大巨蛋") < names.index("台中大里塗城"), "照縣市（北到南）排序")
         check(d["cite"].startswith("清單整理：WFU"), "附出處")
@@ -325,20 +470,70 @@ def selftest():
         check(len(checked) == 1 and d["yt"]["unchecked"] == 5 and d["total"] == 5, f"超過預算的先照收：{d['yt']}")
         YT_SEC = 480
 
-        # 直播已結束：找得到頻道的改看頻道現在的直播；找不到的剔除；判斷不了（要確認不是機器人）的照收
+        # 直播已結束（沒有金鑰）：頻道只掛這一支 → 看頻道直播；頻道掛好幾支 → 標已結束、連頻道；不知道頻道 → 剔除
         lv = [ent("結束有頻道即時影像", 'data-id="endedch0000"', ["影像", "基隆"]),
               ent("結束沒頻道即時影像", 'data-id="endednoch00"', ["影像", "基隆"]),
               ent("要確認機器人即時影像", 'data-id="botcheck000"', ["影像", "基隆"]),
-              ent("正在播即時影像", 'data-id="livenow0000"', ["影像", "基隆"])]
+              ent("正在播即時影像", 'data-id="livenow0000"', ["影像", "基隆"]),
+              ent("苗栗通霄日落大道即時影像", 'data-program="日落大道" data-id="sunset00000"', ["影像", "苗栗"]),
+              ent("苗栗通霄海水浴場即時影像", 'data-program="通霄海水浴場(YT)" data-channel="UCtongxiao00000000000000"', ["影像", "苗栗"])]
         watchs.update({"endedch0000": ("ended", "UCbbbbbbbbbbbbbbbbbbbbbb"), "endednoch00": ("ended", ""),
-                       "livenow0000": ("ok", "UCcccccccccccccccccccccc")})
+                       "livenow0000": ("ok", "UCcccccccccccccccccccccc"), "sunset00000": ("ended", "UCtongxiao00000000000000")})
         run(lambda u: feed(lv), oe, sleep=lambda s: None, look=lk)
         d = load_prev()
         it = {x[0]: x for x in d["items"]}
-        check(it["結束有頻道"][2:4] == ["c", "UCbbbbbbbbbbbbbbbbbbbbbb"], "直播已結束、頁面有頻道：改成看頻道現在的直播")
-        check("結束沒頻道" not in it and d["yt"]["ended"] == 1, "直播已結束又找不到頻道：剔除")
+        check(it["結束有頻道"][2:4] == ["c", "UCbbbbbbbbbbbbbbbbbbbbbb"], "直播已結束、頻道只掛這一支：改成看頻道現在的直播")
+        check(it["苗栗通霄日落大道"][2:4] == ["e", "UCtongxiao00000000000000"],
+              "直播已結束、頻道還掛別支（通霄日落大道／海水浴場）：不亂換成頻道直播，標已結束")
+        check(it["苗栗通霄海水浴場"][2] == "c", "原本就是頻道的照舊")
+        check("結束沒頻道" not in it, "直播已結束又找不到頻道：剔除")
         check(it["要確認機器人"][2] == "y" and it["正在播"][2] == "y", "判斷不了的、正在播的：照原影片收")
-        check(d["yt"] == {"ok": 1, "noembed": 0, "gone": 0, "relive": 1, "ended": 1, "unchecked": 1}, f"計數：{d['yt']}")
+        check(d["yt"] == {"ok": 1, "noembed": 0, "gone": 0, "live": 0, "relive": 1, "ended": 2, "unchecked": 1, "api": False},
+              f"計數：{d['yt']}")
+        check(all(len(x) == 6 for x in d["items"]), "節目名只拿來比對，不寫進輸出")
+
+        # 有金鑰：用 API 判斷結束、從頻道上傳清單找現在的直播、用標題對回每支鏡頭
+        calls = []
+
+        def api(path, params):
+            calls.append((path, dict(params)))
+            if path == "videos":
+                db = {"sunset00000": {"snippet": {"liveBroadcastContent": "none", "channelId": "UCtongxiao00000000000000"},
+                                      "status": {"embeddable": True}, "liveStreamingDetails": {"actualEndTime": "2026-10-01T00:00:00Z"}},
+                      "livenow0000": {"snippet": {"liveBroadcastContent": "live", "channelId": "UCcccccccccccccccccccccc"}, "status": {"embeddable": True}},
+                      "noemb000000": {"snippet": {"liveBroadcastContent": "live", "channelId": "UCx"}, "status": {"embeddable": False}},
+                      "newsunset01": {"snippet": {"liveBroadcastContent": "live", "channelId": "UCtongxiao00000000000000",
+                                                  "title": "【LIVE】苗栗通霄 日落大道 即時影像"}, "status": {"embeddable": True}},
+                      "newbeach001": {"snippet": {"liveBroadcastContent": "live", "channelId": "UCtongxiao00000000000000",
+                                                  "title": "通霄海水浴場 24小時直播"}, "status": {"embeddable": True}},
+                      "oldvod00001": {"snippet": {"liveBroadcastContent": "none", "channelId": "UCtongxiao00000000000000"}, "status": {}}}
+                return {"items": [dict(db[i], id=i) for i in params["id"].split(",") if i in db]}
+            if path == "playlistItems":
+                if params["playlistId"] == "UUtongxiao00000000000000":
+                    return {"items": [{"contentDetails": {"videoId": v}} for v in ("newbeach001", "oldvod00001", "newsunset01")]}
+                raise HTTPError("u", 404, "nf", {}, None)
+            raise AssertionError(path)
+        lk2 = [lv[3], lv[4], lv[5], ent("禁止嵌入即時影像", 'data-id="noemb000000"', ["影像", "台東"]),
+               ent("已刪除即時影像", 'data-id="deleted0000"', ["影像", "台東"])]
+        run(lambda u: feed(lk2), oe, sleep=lambda s: None, look=lambda v: (_ for _ in ()).throw(AssertionError("有金鑰不該讀影片頁")),
+            api=api, key="k")
+        d = load_prev()
+        it = {x[0]: x for x in d["items"]}
+        check(it["苗栗通霄日落大道"][2:4] == ["y", "newsunset01"] and it["苗栗通霄海水浴場"][2:4] == ["y", "newbeach001"],
+              "同頻道兩支鏡頭各自用標題對到正確的新直播")
+        check(it["正在播"][2:4] == ["y", "livenow0000"] and it["禁止嵌入"][2] == "x" and "已刪除" not in it,
+              "API：正在播照收、禁止嵌入外連、查不到的剔除")
+        check(d["yt"]["api"] and d["yt"]["live"] == 2 and d["yt"]["gone"] == 1, f"計數：{d['yt']}")
+        check(all(p != "search" for p, _ in calls) and len([c for c in calls if c[0] == "playlistItems"]) == 1,
+              "只用便宜的上傳清單＋影片查詢（不用一次 100 點的搜尋）")
+        # 金鑰錯或額度用完：退回沒金鑰的做法，不紅燈
+        def api_bad(path, params):
+            raise HTTPError("u", 403, "quotaExceeded", {}, None)
+        check(run(lambda u: feed(lv), oe, sleep=lambda s: None, look=lk, api=api_bad, key="k") == 0
+              and load_prev()["yt"]["api"] is False and load_prev()["total"] == 5, "API 用不了：這一輪改用影片頁判斷，照樣寫出")
+        one = ["某地", "", "e", "", "", [], "某地"]
+        check(match_lives([one], []) == {} and match_lives([one], [("v1", "完全不相干")]) == {0: "v1"},
+              "頻道只有一支鏡頭、一支直播時直接對上；沒有直播就不換")
 
         def gdown(url):
             raise URLError("timeout")
@@ -347,6 +542,20 @@ def selftest():
         os.remove(OUT)
         check(run(gdown, oe) == 1 and not os.path.exists(OUT), "連不到也沒有舊清單：紅燈，不交空檔")
         check(run(lambda u: feed([E[9]]), oe) == 1 and not os.path.exists(OUT), "格式變了、一支都整理不出來：紅燈，不交空檔")
+
+    # 金鑰只能走標頭：網址會出現在錯誤訊息與 Actions 紀錄裡
+    seen, real_get = [], globals()["get"]
+
+    def spy(url, timeout=30, headers=None):
+        seen.append((url, headers or {}))
+        return '{"items":[]}'
+    globals()["get"], YT_KEY = spy, "SECRET-TEST-KEY"
+    try:
+        yt_api("videos", {"part": "snippet", "id": "abcdefghijk"})
+    finally:
+        globals()["get"], YT_KEY = real_get, ""
+    check(seen and "SECRET-TEST-KEY" not in seen[0][0] and seen[0][1].get("X-Goog-Api-Key") == "SECRET-TEST-KEY",
+          "YouTube API 金鑰放 X-Goog-Api-Key 標頭，不進網址")
     print(f"全部通過（{okn} 項）")
     return 0
 

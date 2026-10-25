@@ -33,6 +33,9 @@ jobs:
         run: python scripts/fetch_wfu.py selftest
 
       - name: Fetch
+        env:
+          # 選用：YouTube Data API 金鑰。有的話能幫結束的直播找到新的影片 ID；沒設就用影片頁判斷（不算錯誤）
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
         run: python scripts/fetch_wfu.py
 
       - name: Commit if changed

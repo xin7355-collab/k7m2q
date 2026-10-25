@@ -2907,7 +2907,7 @@ test('即時影像 › 景點海象（v93）：預設列颱風海象、站臺所
   await page.locator('#wfuList .cam-chip', { hasText: '海洋廣場' }).click();
   await expect(page.locator('#shTitle')).toHaveText('基隆海洋廣場');
   const src = await page.locator('#camYt').getAttribute('src');
-  expect(src).toBe('https://www.youtube-nocookie.com/embed/abcdefghijk?autoplay=1&mute=1&playsinline=1&rel=0');
+  expect(src).toBe('https://www.youtube-nocookie.com/embed/abcdefghijk?autoplay=1&mute=1&playsinline=1&rel=0&enablejsapi=1&origin=http%3A%2F%2F127.0.0.1%3A4173');
   expect(await page.locator('#camYt').getAttribute('referrerpolicy')).toBe('strict-origin-when-cross-origin');
   await expect(page.locator('#shBody a', { hasText: 'WFU 原文' })).toHaveAttribute('href', 'https://monitor1.wfuapp.com/2024/01/a.html');
   await expect(page.locator('#shBody a', { hasText: '附近影像' })).toHaveCount(0);            // 沒有座標就不給
@@ -2938,7 +2938,7 @@ test('即時影像 › 景點海象（v93）：預設列颱風海象、站臺所
   // 頻道直播：用頻道的 live_stream 嵌入
   await page.locator('#wfuCty').selectOption('台中');
   await page.locator('#wfuList .cam-chip').first().click();
-  expect(await page.locator('#camYt').getAttribute('src')).toBe('https://www.youtube.com/embed/live_stream?channel=UCE8omMvpPxleZ42Mk2MHQhQ&autoplay=1&mute=1&playsinline=1');
+  expect(await page.locator('#camYt').getAttribute('src')).toBe('https://www.youtube.com/embed/live_stream?channel=UCE8omMvpPxleZ42Mk2MHQhQ&autoplay=1&mute=1&playsinline=1&enablejsapi=1&origin=http%3A%2F%2F127.0.0.1%3A4173');
   await page.locator('#shClose').click();
   // 格式不對的資料點了不開，也不會把奇怪的字串塞進網址
   await page.locator('#wfuCty').selectOption('台東');
@@ -2955,5 +2955,138 @@ test('即時影像 › 景點海象：清單還沒產生時講原因，給原網
   await page.locator('#liveSeg button[data-live="wfu"]').click();
   await expect(page.locator('#wfuBox .msg.w')).toContainText('景點海象清單讀不到');
   await expect(page.locator('#wfuBox a', { hasText: 'WFU 颱風海象' })).toHaveAttribute('href', /monitor1\.wfuapp\.com/);
+  expect(errors).toEqual([]);
+});
+
+/* ── v95：搜尋（萬用、模糊、區域）、打不開的標紅、YouTube 播不了自動說明（使用者 10/26）── */
+const CCTV_SR = { v: 1, src: 'TDX', updated: '2026-10-26T05:00:00+08:00', total: 6, groups: [
+  { k: 'Freeway', name: '國道', n: 2, cams: [
+    [25.12299, 121.7357, '國道1號 0K+000 （基隆端→基隆交流道）', 'https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10000', ''],
+    [25.0645, 121.6586, '國道1號 汐止系統交流道', 'https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10010', '']] },
+  { k: 'Highway', name: '省道', n: 2, cams: [
+    [25.1445, 121.7905, '台2線 八斗子漁港', 'https://cctv-ss01.thb.gov.tw/T2-70K+700', ''],
+    [24.8350, 121.8000, '台2線 頭城外澳', 'https://cctv-ss01.thb.gov.tw/T2-130K+000', '']] },
+  { k: 'City/Taipei', name: '臺北市', n: 1, cams: [[25.0330, 121.5654, '信義路五段 台北101', 'https://cctv.bote.gov.taipei:8501/MJPEG/1', '']] },
+  { k: 'City/YunlinCounty', name: '雲林縣', n: 1, cams: [[23.7, 120.43, '斗六 大學路', 'https://yltraffic.yunlin.gov.tw/CCTV/Live.html?deviceid=8', '']] }] };
+const WFU_SR = { v: 1, src: 'WFU', updated: '2026-10-26T05:17:00+08:00', total: 3, cite: '清單整理：WFU',
+  items: [
+    ['基隆八斗子漁港', '基隆', 'y', 'abcdefghijk', 'https://monitor1.wfuapp.com/a.html', ['港口', '颱風海象']],
+    ['苗栗通霄日落大道', '苗栗', 'e', 'UC9SsBCtiL23fj0Xyyt7dRtw', 'https://monitor1.wfuapp.com/b.html', ['景點']],
+    ['新竹南寮漁港', '新竹', 'i', 'https://a.gov.tw/x.jpg', 'https://monitor1.wfuapp.com/c.html', ['港口']]] };
+
+test('即時影像搜尋（v95）：模糊（臺台、簡寫、不連續、錯一字）、萬用字元、縣市鄉鎮與站臺距離；地圖只亮搜到的', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: CCTV_SR, wfu: WFU_SR });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camMap')).toBeVisible();
+  await page.waitForFunction(() => typeof REGION !== 'undefined' && REGION && WFU && CAMS);
+  const q = async (text, opts = {}) => page.evaluate(([t, o]) => { SRCH = { ...SRCH0, q: t, ...o }; return srchRun().map(r => r.it.name); }, [text, opts]);
+  expect((await q('八斗子')).sort()).toEqual(['台2線 八斗子漁港', '基隆八斗子漁港'].sort());     // 監視器、景點一起搜
+  expect(await q('臺2線 八斗')).toEqual(['台2線 八斗子漁港']);                                  // 臺＝台、多個詞都要符合
+  expect(await q('國1 汐止')).toEqual(['國道1號 汐止系統交流道']);                            // 國道1號＝國1
+  expect(await q('台*澳')).toEqual(['台2線 頭城外澳']);                                       // 萬用字元
+  expect(await q('基港')).toContain('基隆八斗子漁港');                                        // 字不連續
+  expect((await q('八豆子')).sort()).toEqual(['台2線 八斗子漁港', '基隆八斗子漁港'].sort());   // 錯一個字
+  // 區域：縣市（國道、省道也靠座標分得出縣市）、鄉鎮區、站臺幾公里內
+  expect(await q('', { cty: '基隆市' })).toEqual(expect.arrayContaining(['國道1號 0K+000 （基隆端→基隆交流道）', '台2線 八斗子漁港', '基隆八斗子漁港']));
+  expect(await q('', { cty: '台北市', town: '信義區' })).toEqual(['信義路五段 台北101']);
+  expect(await q('', { cty: '新北市' })).toEqual(['國道1號 汐止系統交流道']);
+  expect(await q('', { cty: '新竹縣' })).toEqual(['新竹南寮漁港']);                           // 景點只有「新竹」，市縣都算
+  expect(await q('', { near: 'st:3' })).toEqual(['國道1號 0K+000 （基隆端→基隆交流道）']);              // 站臺 3 km 內（景點沒座標不列）
+  expect((await q('', { near: 'st:10' })).sort()).toEqual(['台2線 八斗子漁港', '國道1號 0K+000 （基隆端→基隆交流道）'].sort());
+  expect(await q('', { src: 'wfu', cty: '基隆市' })).toEqual(['基隆八斗子漁港']);
+  // 畫面：打字就列結果，地圖上沒中的淡掉
+  await page.evaluate(() => { SRCH = { ...SRCH0 }; srchSave(); });
+  await expect(page.locator('#srchClr')).toBeHidden();
+  await page.locator('#srchQ').fill('八斗子');
+  await expect(page.locator('#srchRes .cam-chip')).toHaveCount(2);
+  await expect(page.locator('#srchClr')).toBeVisible();                 // 打字後才出現，而且輸入框沒被重畫（游標還在）
+  await expect(page.locator('#srchQ')).toBeFocused();
+  await expect(page.locator('#srchRes')).toContainText('找到 2 支（監視器 1、景點海象 1）');
+  await expect(page.locator('#srchRes .cam-chip', { hasText: '台2線' })).toContainText('基隆市中正區');   // 顯示縣市鄉鎮
+  const op = await page.evaluate(() => CAMDOTS.list.map(d => d.options.fillOpacity));
+  expect(op.filter(v => v > 0.5)).toHaveLength(1);
+  // 選縣市後鄉鎮下拉才有選項
+  await expect(page.locator('#srchTown')).toBeDisabled();
+  await page.locator('#srchCty').selectOption('台北市');
+  await expect(page.locator('#srchTown option', { hasText: '信義區' })).toHaveCount(1);
+  await page.locator('#srchQ').fill('');
+  await page.locator('#srchTown').selectOption('信義區');
+  await expect(page.locator('#srchRes .cam-chip')).toHaveCount(1);
+  // 點結果就開畫面
+  await page.locator('#srchRes .cam-chip').first().click();
+  await expect(page.locator('#shTitle')).toHaveText('信義路五段 台北101');
+  await page.locator('#shClose').click();
+  // 清除：地圖恢復
+  await page.locator('#srchClr').click();
+  await expect(page.locator('#srchRes .cam-chip')).toHaveCount(0);
+  expect(await page.evaluate(() => CAMDOTS.list.every(d => d.options.fillOpacity > 0.1))).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('打不開的標紅（v95）：開失敗就記住、清單與地圖變紅、寫原因；已知 iPhone 會擋的雲林網站、已結束的直播事先就標紅', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: CCTV_SR, wfu: WFU_SR });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camMap')).toBeVisible();
+  // 國道那支：測試擋外連 → 載不出來 → 標紅
+  const chip = page.locator('#camNear .cam-chip', { hasText: '0K+000' });
+  await expect(chip).not.toHaveClass(/bad/);
+  await chip.click();
+  await expect(page.locator('#camWait')).toContainText('畫面載不出來');
+  await page.locator('#shClose').click();
+  await expect(chip).toHaveClass(/bad/);
+  await expect(chip.locator('.why')).toContainText('上次打不開');
+  const dot = await page.evaluate(() => { const c = CAMS.find(x => /0K\+000/.test(x.name)); return CAMDOTS.byKey[c.key].options.fillColor; });
+  expect(dot).toBe('#FF5247');
+  expect(Object.keys(await page.evaluate(() => JSON.parse(localStorage.getItem('galepost.camstat'))))).toHaveLength(1);
+  // 三天後不再標紅（主機常會自己恢復）
+  expect(await page.evaluate(() => { const c = CAMS.find(x => /0K\+000/.test(x.name)); CAMSTAT[c.key][0] -= 4 * 864e5; return camIssue(c); })).toBe('');
+  // 雲林：iPhone 會擋的網站，事先標紅、視窗裡講清楚
+  await page.evaluate(() => { SRCH = { ...SRCH0, q: '大學路' }; srchSave(); renderWindyIfReady(); });
+  await expect(page.locator('#srchRes .cam-chip.bad')).toContainText('雲林縣網站的憑證 iPhone 不認');
+  await page.locator('#srchRes .cam-chip').first().click();
+  await expect(page.locator('#camWait')).toContainText('雲林縣網站的憑證 iPhone 不認');
+  await page.locator('#shClose').click();
+  // 景點海象：已結束的直播標紅、點了連到頻道直播列表
+  await page.locator('#srchClr').click();
+  await page.locator('#liveSeg button[data-live="wfu"]').click();
+  await page.locator('#wfuTag').selectOption('');
+  const ended = page.locator('#wfuList .cam-chip', { hasText: '通霄日落大道' });
+  await expect(ended).toHaveClass(/bad/);
+  await expect(ended.locator('.why')).toHaveText('直播已結束');
+  await ended.click();
+  await expect(page.locator('#camWait')).toContainText('直播已經結束');
+  await expect(page.locator('#camWait a.btn.pri')).toHaveAttribute('href', 'https://www.youtube.com/channel/UC9SsBCtiL23fj0Xyyt7dRtw/streams');
+  expect(errors).toEqual([]);
+});
+
+test('YouTube 播不了（v95）：播放器回報錯誤碼就換成我們的說明＋到 YouTube 的按鈕，並標紅；開始播了就清掉紅標', async ({ page }) => {
+  const errors = await bootWith(page, [{ ...KEEL, county: '基隆市' }], { ty: typhoonFileFull(), cctv: CCTV_SR, wfu: WFU_SR });
+  // 假的 YouTube 播放器：收到「我在聽」就回報錯誤碼 150（禁止嵌入）或開始播放
+  let mode = 'err';
+  await page.route('https://www.youtube-nocookie.com/embed/**', r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><script>
+    addEventListener('message', e => { const d = JSON.parse(e.data); if (d.event !== 'listening') return;
+      parent.postMessage(JSON.stringify(${mode === 'err' ? "{ event: 'onError', info: 150 }" : "{ event: 'infoDelivery', info: { playerState: 1 } }"}), '*'); });
+    </script>` }));
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await page.locator('#liveSeg button[data-live="wfu"]').click();
+  await page.locator('#wfuList .cam-chip', { hasText: '八斗子' }).click();
+  await expect(page.locator('#camWait')).toContainText('YouTube 回報這支現在播不了（擁有者不開放在別的網站播放）');
+  await expect(page.locator('#camWait a.btn.pri')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=abcdefghijk');
+  await page.locator('#shClose').click();
+  const chip = page.locator('#wfuList .cam-chip', { hasText: '八斗子' });
+  await expect(chip).toHaveClass(/bad/);
+  await expect(chip.locator('.why')).toContainText('上次打不開');
+  // 下一次開始播了：紅標拿掉
+  mode = 'ok';
+  await page.unroute('https://www.youtube-nocookie.com/embed/**');
+  await page.route('https://www.youtube-nocookie.com/embed/**', r => r.fulfill({ contentType: 'text/html', body: `<!doctype html><script>
+    addEventListener('message', e => { if (JSON.parse(e.data).event === 'listening') parent.postMessage(JSON.stringify({ event: 'infoDelivery', info: { playerState: 1 } }), '*'); });
+    </script>` }));
+  await chip.click();
+  await page.locator('#shClose').click();
+  await expect(chip).not.toHaveClass(/bad/);
   expect(errors).toEqual([]);
 });

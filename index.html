@@ -151,7 +151,7 @@ main{max-width:56.25rem;margin:0 auto;padding:calc(env(safe-area-inset-top) + 0.
 .fld>.lb{display:block;font:600 0.6875rem/1.4 var(--mono);letter-spacing:.12em;color:var(--fg3);
   margin-bottom:0.375rem}
 .fld>.sub{font-size:0.7188rem;color:var(--fg4);margin-top:0.3125rem;line-height:1.55}
-input[type=text],input[type=number],input[type=password],input[type=datetime-local],select,textarea{
+input[type=text],input[type=search],input[type=number],input[type=password],input[type=datetime-local],select,textarea{
   background:var(--bg2);border:1px solid var(--edge2);border-radius:var(--r2);
   /* 不低於 16px:iOS Safari 在輸入框字級小於 16px 時會自動放大整頁,
      選「小」字級時會造成畫面跳動,所以這裡設下限。 */
@@ -662,6 +662,19 @@ details.more>.hint{margin-top:0.25rem}
 .cam-chip{display:inline-flex;align-items:baseline;gap:0.375rem;max-width:100%;padding:0.375rem 0.625rem;border:1px solid var(--edge2);
   border-radius:var(--r);background:var(--surf);color:var(--fg2);font-size:0.75rem;text-align:left;min-height:2.25rem}
 .cam-chip small{color:var(--fg4);font-family:var(--mono);white-space:nowrap}
+/* 打不開的：紅框＋紅字原因（顏色之外還有文字，色弱也看得出來） */
+.cam-chip.bad{border-color:rgba(255,82,71,.7);background:rgba(255,82,71,.08);flex-wrap:wrap}
+.cam-chip .why{flex:0 0 100%;font-style:normal;font-size:0.6875rem;color:#FF8A82}
+.bad-t{color:#FF8A82}
+/* 即時影像搜尋 */
+.srch{margin-bottom:0.75rem}
+.srch-q{display:flex;gap:0.5rem;margin-bottom:0.5rem}
+.srch-q .btn[hidden]{display:none}
+.srch-q input{flex:1 1 auto;min-width:0;-webkit-appearance:none;appearance:none}   /* 字級沿用輸入框的下限 16px：低於 16px iOS 會自動放大整頁 */
+.srch-res{display:flex;flex-wrap:wrap;gap:0.375rem;margin:0.375rem 0;max-height:min(45vh,24rem);overflow-y:auto;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch}   /* 結果自己捲：不然搜「國1」幾十筆會把地圖推到好幾個螢幕外 */
+.srch-res .cam-chip{flex-wrap:wrap}
+.srch-res .cam-chip small{white-space:normal}
 .cam-tw{font-size:0.75rem;color:var(--fg3);margin-left:auto}
 .cam-view{position:relative;background:#000;border-radius:var(--r);overflow:hidden;min-height:12rem;display:flex;align-items:center;justify-content:center}
 .cam-view img{display:block;width:100%;height:auto}
@@ -1994,7 +2007,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v94';
+const APP_VER = 'v95';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -8174,13 +8187,65 @@ function loadCams() {
       if (!j || j.v !== 1 || !Array.isArray(j.groups)) throw new Error('格式不對');
       CAMS = []; CAMS_AT = j.updated || '';
       for (const g of j.groups) for (const c of g.cams || []) {
-        CAMS.push({ lat: c[0], lng: c[1], name: c[2], url: c[3], img: c[4], play: c[5] || '', g: g.k, src: g.name });
+        CAMS.push({ lat: c[0], lng: c[1], name: c[2], url: c[3], img: c[4], play: c[5] || '', g: g.k, src: g.name, key: 't' + (c[3] || c[4]) });
       }
       return CAMS;
     })
     .catch(e => { CAMS_ERR = String((e && e.message) || e); _camP = null; return null; });
   return _camP;
 }
+/* 打不開的監視器標紅（使用者 10/26）。後端從美國測不到臺灣大部分機關主機，沒辦法替每一支打分數；
+   所以記「這台手機實際開過的結果」：開失敗的紅三天（主機常會自己恢復），之後開成功就清掉。
+   另外兩種事先就知道：WFU 清單裡已結束的直播（e），和已知 iPhone 會擋的機關網站（CAM_WARN）。 */
+const CAMSTAT_KEY = 'galepost.camstat', CAMSTAT_DAYS = 3;
+const CAM_WARN = [
+  // 2026-10-26 查：憑證是 TWCA 2023 年新根憑證（TWCA CYBER Root CA）簽的，Linux 驗得過、使用者的 iPhone 顯示「此連線並非私人連線」
+  [/^https:\/\/yltraffic\.yunlin\.gov\.tw\//, '雲林縣網站的憑證 iPhone 不認，打開會被擋'],
+];
+let CAMSTAT = null;
+function camStat() {
+  if (!CAMSTAT) { try { CAMSTAT = JSON.parse(localStorage.getItem(CAMSTAT_KEY) || '{}') || {}; } catch (e) { CAMSTAT = {}; } }
+  return CAMSTAT;
+}
+function camMark(c, ok, why) {
+  if (!c || !c.key) return;
+  const st = camStat(), prev = st[c.key];
+  if (ok && !prev) return;                                    // 沒壞過的不必記，localStorage 不用塞幾千筆
+  if (ok) delete st[c.key]; else st[c.key] = [Date.now(), why || '載不出來'];
+  // 太舊的清掉、最多留 300 筆
+  const keys = Object.keys(st).sort((a, b) => st[b][0] - st[a][0]);
+  keys.forEach((k, n) => { if (n >= 300 || Date.now() - st[k][0] > 14 * 864e5) delete st[k]; });
+  try { localStorage.setItem(CAMSTAT_KEY, JSON.stringify(st)); } catch (e) {}
+  camStatPaint(c);
+}
+// 這一支現在要不要標紅、為什麼；不用標回 ''
+function camIssue(c) {
+  if (!c) return '';
+  const u = c.url || c.img || '';
+  for (const [re, why] of CAM_WARN) if (re.test(u)) return why;
+  if (c.ended) return '直播已結束';
+  const v = camStat()[c.key];
+  if (v && Date.now() - v[0] < CAMSTAT_DAYS * 864e5) {
+    const t = new Date(v[0]);
+    return `上次打不開（${t.getMonth() + 1}/${t.getDate()} ${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}）`;
+  }
+  return '';
+}
+const CAM_BAD = '#FF5247';
+// 開過之後馬上更新畫面上同一支的標記（清單的按鈕、地圖的點），不必整頁重畫
+function camStatPaint(c) {
+  const why = camIssue(c);
+  document.querySelectorAll(`[data-key="${CSS.escape(c.key)}"]`).forEach(b => {
+    b.classList.toggle('bad', !!why);
+    const w = b.querySelector('.why');
+    if (w) w.textContent = why; else if (why) b.insertAdjacentHTML('beforeend', `<em class="why">${esc(why)}</em>`);
+    if (!why && w) w.remove();
+  });
+  const d = CAMDOTS && CAMDOTS.byKey[c.key];
+  if (d) d.setStyle(camDotStyle(c));
+}
+// 清單按鈕上的紅字註記
+const camWhy = c => { const w = camIssue(c); return w ? `<em class="why">${esc(w)}</em>` : ''; };
 const camStations = () => DB.stations.filter(s => IS_LIVE(s) && Number.isFinite(s.lat) && Number.isFinite(s.lng));
 // 每站最近的幾支（15 km 內）：颱風天要看的是自己站臺附近
 function camNear(st, n = 3, km = 15) {
@@ -8193,6 +8258,15 @@ function camNear(st, n = 3, km = 15) {
     if (d <= km) out.push({ i, d });
   }
   return out.sort((a, b) => a.d - b.d).slice(0, n);
+}
+let CAMDOTS = null;
+/* 點的樣子：空心＝App 裡播不了、要到機關網頁看（點之前就知道，不用點了才失望）；紅＝打不開；
+   搜尋時沒中的淡掉 */
+function camDotStyle(c, dim) {
+  const pg = camPlay(c).k === 'page', bad = !!camIssue(c);
+  const col = bad ? CAM_BAD : camCol(c.g);
+  return { weight: pg || bad ? 1.5 : 1, color: pg || bad ? col : '#040A10', fillColor: col,
+    fillOpacity: dim ? 0.06 : pg ? 0.12 : 0.9, opacity: dim ? 0.15 : 1 };
 }
 async function renderCams() {
   const box = document.getElementById('camBox');
@@ -8209,20 +8283,21 @@ async function renderCams() {
   }
   box.innerHTML = `<div class="cam-map" id="camMap"></div>
     <p class="hint" style="margin:0.375rem 0 0.75rem">${CAMS.length.toLocaleString()} 支官方監視器　點圓點看即時畫面　<span class="cam-lg">
-      <i style="--c:${CAM_COL.Freeway}"></i>國道<i style="--c:${CAM_COL.Highway}"></i>省道<i style="--c:${CAM_COL.city}"></i>縣市<i class="pg"></i>空心＝到機關網頁看</span></p>
+      <i style="--c:${CAM_COL.Freeway}"></i>國道<i style="--c:${CAM_COL.Highway}"></i>省道<i style="--c:${CAM_COL.city}"></i>縣市<i class="pg"></i>空心＝到機關網頁看<i style="--c:${CAM_BAD}"></i>紅＝打不開</span></p>
     <div id="camNear"></div>
     <p class="ai-cite">監視器清單：交通部 TDX 運輸資料流通服務（政府資料開放授權條款）${CAMS_AT ? `，${esc(CAMS_AT.slice(0, 10))} 更新` : ''}。
       即時畫面由各來源機關提供，版權屬原機關；畫面常有數秒到數十秒延遲。「附近影像 ↗」開的是民間網站 tw.live。</p>`;
   // 站臺附近：一站一列，最近的三支
   const near = sts.map(s => ({ s, n: camNear(s) }));
   $('#camNear').innerHTML = sts.length ? `<div class="sec"><h2>站臺附近</h2></div>` + near.map(({ s, n }) => `<div class="cam-st">
-      <b class="stn">${esc(s.name)}</b>${n.length ? n.map(x => `<button type="button" class="cam-chip" data-cam="${x.i}">
-        ${esc(CAMS[x.i].name)}<small>${x.d < 1 ? '<1' : x.d.toFixed(1)} km${camPlay(CAMS[x.i]).k === 'page' ? ' ↗' : ''}</small></button>`).join('')
+      <b class="stn">${esc(s.name)}</b>${n.length ? n.map(x => `<button type="button" class="cam-chip${camIssue(CAMS[x.i]) ? ' bad' : ''}" data-cam="${x.i}" data-key="${esc(CAMS[x.i].key)}">
+        ${esc(CAMS[x.i].name)}<small>${x.d < 1 ? '<1' : x.d.toFixed(1)} km${camPlay(CAMS[x.i]).k === 'page' ? ' ↗' : ''}</small>${camWhy(CAMS[x.i])}</button>`).join('')
         : '<span class="hint">15 km 內沒有官方監視器</span>'}
       <a class="cam-tw" href="${twl(s.lat, s.lng)}" target="_blank" rel="noopener">附近影像 ↗</a></div>`).join('') : '';
   $('#camNear').onclick = e => { const b = e.target.closest('[data-cam]'); if (b) openCam(+b.dataset.cam); };
   if (window.__noLeaflet || typeof L === 'undefined') { $('#camMap').innerHTML = '<div class="ph">地圖元件沒載入，下面的站臺附近清單照樣能點。</div>'; return; }
-  if (CAMMAP) { toggleCamFull(false); try { CAMMAP.remove(); } catch (e) {} CAMMAP = null; }
+  // 舊地圖拿掉時連點一起丟：搜尋結果晚一步回來時，不能再去改已經拆掉的地圖上的點（會在 canvas 上出錯）
+  if (CAMMAP) { toggleCamFull(false); CAMDOTS = null; try { CAMMAP.remove(); } catch (e) {} CAMMAP = null; }
   CAMMAP = L.map('camMap', { zoomControl: false, attributionControl: true, minZoom: 6, maxZoom: 18 }).setView([23.7, 121], 7);
   CAMMAP.attributionControl.setPrefix('');
   L.control.zoom({ position: 'bottomleft' }).addTo(CAMMAP);
@@ -8251,11 +8326,12 @@ async function renderCams() {
   const rend = L.canvas({ padding: 0.3, tolerance: 10 });
   // 縮小看全臺時點要小，不然北部、西部擠成一整片白；放大到街道才放大好點
   const camR = () => { const z = CAMMAP.getZoom(); return z <= 8 ? 2 : z <= 11 ? 3.5 : 5; };
-  // 空心＝App 裡播不了、要到機關網頁看：點之前就知道，不用點了才失望
-  const dots = CAMS.map((c, i) => { const pg = camPlay(c).k === 'page';
-    return L.circleMarker([c.lat, c.lng], { renderer: rend, radius: 2, weight: pg ? 1.5 : 1, color: pg ? camCol(c.g) : '#040A10',
-      fillColor: camCol(c.g), fillOpacity: pg ? 0.12 : 0.9 }).on('click', () => openCam(i)).addTo(CAMMAP); });
+  const dots = CAMS.map((c, i) => L.circleMarker([c.lat, c.lng], { renderer: rend, radius: 2, ...camDotStyle(c) })
+    .on('click', () => openCam(i)).addTo(CAMMAP));
+  CAMDOTS = { list: dots, byKey: {} };
+  CAMS.forEach((c, i) => { CAMDOTS.byKey[c.key] = dots[i]; });
   CAMMAP.on('zoomend', () => { const r = camR(); dots.forEach(d => d.setRadius(r)); });
+  if (SRCH_ON()) srchMapApply();
   sts.forEach(s => L.marker([s.lat, s.lng], { icon: stPin(s, typeOf(s.type)), zIndexOffset: 800 })
     .bindTooltip(s.name, { permanent: true, direction: 'bottom', className: 'cam-sttip' }).addTo(CAMMAP));
   // 有站臺就框站臺（颱風天看的是自己附近），沒有就看全臺
@@ -8336,6 +8412,40 @@ function camViewFull(on) {
   const b = document.getElementById('camFs');
   if (b) b.setAttribute('aria-pressed', String(next));
 }
+/* YouTube 播放器的回報。沒有載入 YouTube 的 JS（不讓第三方程式碼跑在我們的頁面、碰到 localStorage），
+   直接用播放器本身的 postMessage：先送「我在聽」，它就會回傳狀態與錯誤碼。
+   錯誤碼 2／5／100／101／150：參數錯、HTML5 播不了、影片不存在或轉私人、擁有者禁止嵌入；
+   直播結束、頻道沒在播時播放器顯示「無法播放這部影片」，也是走這條。 */
+let _ytCam = null, _ytLink = '';
+function ytWatch(c, link) {
+  _ytCam = c; _ytLink = link || '';
+  const f = document.getElementById('camYt');
+  if (!f) return;
+  const hello = () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), new URL(f.src).origin); } catch (e) {} };
+  f.addEventListener('load', hello);
+  setTimeout(hello, 1500);                                    // load 事件偶爾在掛監聽之前就發生了
+}
+function ytFail(code) {
+  const c = _ytCam, wait = document.getElementById('camWait'), f = document.getElementById('camYt');
+  if (!c || !f) return;
+  camMark(c, false, code === 101 || code === 150 ? '不開放嵌入' : '直播已結束或下架');
+  if (wait) {
+    wait.hidden = false;
+    wait.innerHTML = `YouTube 回報這支現在播不了（${code === 101 || code === 150 ? '擁有者不開放在別的網站播放' : '直播已結束、轉私人或已下架'}）。`
+      + (_ytLink ? `<a class="btn pri" href="${esc(_ytLink)}" target="_blank" rel="noopener">到 YouTube 看 ↗</a>` : '');
+  }
+}
+window.addEventListener('message', e => {
+  if (!/^https:\/\/www\.youtube(-nocookie)?\.com$/.test(e.origin)) return;
+  const f = document.getElementById('camYt');
+  if (!f || e.source !== f.contentWindow) return;
+  let d = e.data;
+  try { if (typeof d === 'string') d = JSON.parse(d); } catch (err) { return; }
+  if (!d || typeof d !== 'object') return;
+  if (d.event === 'onError') ytFail(+d.info);
+  const st = d.event === 'onStateChange' ? d.info : d.event === 'infoDelivery' && d.info ? d.info.playerState : null;
+  if (st === 1 && _ytCam) camMark(_ytCam, true);              // 開始播了
+});
 function openCam(i) { const c = CAMS && CAMS[i]; if (c) showCam(c); }
 // c：{ name, src（來源說明）, lat/lng（可無）, url／img／play（監視器）, embed／page（YouTube）, link（WFU 原文） }
 function showCam(c) {
@@ -8347,15 +8457,19 @@ function showCam(c) {
   const canHls = P.k === 'hls' && !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
   const k = P.k === 'hls' && !canHls ? 'page' : P.k;
   const orig = c.url || c.img;
-  const pageMsg = c.page ? '這支直播的擁有者不開放在別的網站播放，要到 YouTube 看。'
-    : '這個來源的畫面要在機關自己的播放網頁看（對方不開放其他網站直接播放）。';
+  const warn = CAM_WARN.find(([re]) => re.test(orig || ''));
+  const pageMsg = c.ended ? '這支直播已經結束（WFU 清單的連結過期了）。同一個頻道可能已經開了新的直播，到 YouTube 頻道的直播列表看看。'
+    : c.page ? '這支直播的擁有者不開放在別的網站播放（YouTube 上關掉了「允許嵌入」），只能到 YouTube 看。'
+    : '這個來源的畫面要在機關自己的播放網頁看（對方不開放其他網站直接播放）。' + (warn ? `注意：${warn[1]}，可以改看「附近影像」。` : '');
   const x = '<button type="button" class="cam-x" aria-label="離開全螢幕" onclick="camViewFull(false)">✕</button>';
   const view = k === 'page'
-    ? `<div class="cam-view cam-pg"><div class="cam-wait" id="camWait">${pageMsg}${orig ? `<a class="btn pri" href="${esc(orig)}" target="_blank" rel="noopener">${c.page ? '到 YouTube 看直播' : '到機關網頁看即時畫面'} ↗</a>` : ''}</div></div>`
+    ? `<div class="cam-view cam-pg"><div class="cam-wait" id="camWait">${pageMsg}${orig ? `<a class="btn pri" href="${esc(orig)}" target="_blank" rel="noopener">${c.ended ? '到 YouTube 頻道看' : c.page ? '到 YouTube 看直播' : '到機關網頁看即時畫面'} ↗</a>` : ''}</div></div>`
     : k === 'yt'
       // YouTube 沒有來源網址（Referer）時會報「播放器設定錯誤」，所以這裡明講要帶
-      ? `<div class="cam-view cam-yt"><iframe id="camYt" src="${esc(P.src)}" title="${esc(c.name)}" referrerpolicy="strict-origin-when-cross-origin"
-          allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>${x}</div>`
+      // enablejsapi：讓播放器回報「播不了」（錯誤碼）或「開始播了」，才能自動標紅、換成我們自己的說明
+      ? `<div class="cam-view cam-yt"><iframe id="camYt" src="${esc(P.src + '&enablejsapi=1&origin=' + encodeURIComponent(location.origin))}" title="${esc(c.name)}"
+          referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+          <div class="cam-wait" id="camWait" hidden></div>${x}</div>`
       : k === 'hls'
         ? `<div class="cam-view"><video id="camVid" muted playsinline autoplay controls hidden></video><div class="cam-wait" id="camWait">載入畫面中…</div>${x}</div>`
         // no-referrer：有些機關主機擋「從別的網站引用」的影像，不帶來源網址才放行
@@ -8369,11 +8483,13 @@ function showCam(c) {
       ${c.link ? `<a class="btn" href="${esc(c.link)}" target="_blank" rel="noopener">WFU 原文 ↗</a>` : ''}
       ${geo ? `<a class="btn" href="https://tw.live/nearby/?lat=${c.lat}&lon=${c.lng}" target="_blank" rel="noopener">附近影像 ↗</a>` : ''}</div>`,
     () => {
-      if (k === 'page' || k === 'yt') return;
+      if (k === 'page') return;
+      if (k === 'yt') return ytWatch(c, orig);
       const wait = $('#camWait');
-      const shown = el => { el.hidden = false; if (wait) wait.hidden = true; clearTimeout(_camSlow); };
+      const shown = el => { el.hidden = false; if (wait) wait.hidden = true; clearTimeout(_camSlow); camMark(c, true); };
       const fail = el => {
         clearTimeout(_camTimer); _camTimer = 0; clearTimeout(_camSlow);   // 載不出來就不必一直換；失敗的連線本來就沒在傳
+        camMark(c, false, '載不出來');
         el.hidden = true;                                 // 破圖示不要露出來
         if (wait) { wait.hidden = false; wait.textContent = `畫面載不出來（機關主機沒回應、離線或維修中）。${geo ? `可以按下面${orig ? '「原始畫面 ↗」或' : ''}「附近影像 ↗」看看。` : orig ? '可以按下面「原始畫面 ↗」看看。' : ''}`; }
       };
@@ -8434,7 +8550,7 @@ const wfuCounty = name => { const c = cnorm(name).replace(/[縣市]$/, ''); retu
 // 清單的一筆 → 播放視窗吃的格式。來源字串雖然是後端驗過的，組網址前再檢查一次格式，不讓奇怪的值混進 iframe
 function wfuCam(it) {
   const [t, cty, k, ref, link] = it;
-  const c = { name: t, src: `${cty || '其他'}・WFU 整理`, link: /^https:\/\//.test(link || '') ? link : '' };
+  const c = { name: t, src: `${cty || '其他'}・WFU 整理`, link: /^https:\/\//.test(link || '') ? link : '', key: 'w' + k + ref };
   if ((k === 'y' || k === 'x') && /^[\w-]{11}$/.test(ref)) {
     c.url = `https://www.youtube.com/watch?v=${ref}`;
     if (k === 'x') c.page = true;
@@ -8442,6 +8558,10 @@ function wfuCam(it) {
   } else if (k === 'c' && /^UC[\w-]{22}$/.test(ref)) {
     c.url = `https://www.youtube.com/channel/${ref}/live`;
     c.embed = `https://www.youtube.com/embed/live_stream?channel=${ref}&autoplay=1&mute=1&playsinline=1`;
+  } else if (k === 'e' && /^UC[\w-]{22}$/.test(ref)) {
+    // 直播已結束、頻道又掛好幾支鏡頭：不知道新的直播是哪一支，連到頻道的直播列表讓人自己挑
+    c.page = true; c.ended = true;
+    c.url = `https://www.youtube.com/channel/${ref}/streams`;
   } else if (k === 'i' && /^https:\/\//.test(ref)) {
     /* 部落格的「截圖」欄其實一半以上是 MJPEG 串流（省道、新北、臺北）。真正的單張圖才每 10 秒換一張；
        串流交給監視器同一套判斷（標準串流直接播、基隆那家改抓 /snapshot），不然每 10 秒就斷線重連一次 */
@@ -8476,7 +8596,7 @@ async function renderWfu() {
         tags.map(t => opt(t, t, tag)).join('')}</select></label>
       <label class="wy-sel"><span>縣市</span><select id="wfuCty">${opt('', '全部', '')}${
         WFU_CTY.filter(c => items.some(it => it[1] === c)).map(c => opt(c, mine.includes(c) ? `${c}（站臺）` : c, '')).join('')}</select></label></div>
-    <p class="hint" style="margin:0.375rem 0 0.25rem">▶ 直播在 App 裡看　截圖每 10 秒更新　↗ 要到 YouTube 看</p>
+    <p class="hint" style="margin:0.375rem 0 0.25rem">▶ 直播在 App 裡看　截圖每 10 秒更新　↗ 要到 YouTube 看　<span class="bad-t">紅＝打不開</span></p>
     <div id="wfuList"></div>
     <p class="ai-cite">${esc(WFU.cite || '')}${WFU.updated ? `　${esc(WFU.updated.slice(0, 10))} 更新` : ''}
       <a href="https://monitor1.wfuapp.com/" target="_blank" rel="noopener">原網站 ↗</a></p>`;
@@ -8490,8 +8610,10 @@ async function renderWfu() {
       if (!g.length) return '';
       return `<div class="cam-st"><b class="stn">${esc(c || '其他')}${mine.includes(c) ? '<small>站臺所在</small>' : ''}</b>${
         // 名稱開頭的縣市跟分組標題重複（「基隆海洋廣場」→「海洋廣場」），清單裡省掉；打開的視窗標題仍是全名
-        g.map(({ it, i }) => `<button type="button" class="cam-chip" data-wfu="${i}">${esc(c && it[0].startsWith(c) && it[0].length > c.length + 1 ? it[0].slice(c.length) : it[0])}<small>${
-          it[2] === 'i' ? '截圖' : it[2] === 'x' ? '↗' : '▶'}</small></button>`).join('')}</div>`;
+        g.map(({ it, i }) => { const cm = wfuCam(it) || { key: '' };
+          return `<button type="button" class="cam-chip${camIssue(cm) ? ' bad' : ''}" data-wfu="${i}" data-key="${esc(cm.key)}">${
+            esc(c && it[0].startsWith(c) && it[0].length > c.length + 1 ? it[0].slice(c.length) : it[0])}<small>${
+            it[2] === 'i' ? '截圖' : it[2] === 'x' || it[2] === 'e' ? '↗' : '▶'}</small>${camWhy(cm)}</button>`; }).join('')}</div>`;
     }).join('');
     $('#wfuList').innerHTML = html || '<p class="hint">這個分類、縣市沒有影像。</p>';
   };
@@ -8503,6 +8625,199 @@ async function renderWfu() {
     if (c) showCam(c);
   };
   draw();
+}
+
+/* ═══ 即時影像搜尋（v95，使用者 10/26：萬用、模糊、區域）═══════════════
+   一個框同時搜監視器（TDX 6 千多支）與景點海象（WFU）：
+   - 萬用：* 代表任意幾個字、? 代表一個字（「台*線」「國?」）；空格分開的每個詞都要符合
+   - 模糊：臺／台、全形半形、標點空白都不計；「國道1號」也找得到「國1」、「台2線」也找得到「台2」；
+           字可以不連續（「基港」找到「基隆港」）；三個字以上容許錯、漏、多一個字（「八豆子」找到「八斗子」）
+   - 區域：縣市、鄉鎮區（用座標查 assets/region.json，國道、省道也分得出在哪一區）、離我的位置或站臺幾公里
+   景點清單沒有座標，只能用縣市篩；選了鄉鎮或距離就只列監視器。 */
+const SRCH_KEY = 'galepost.ui.srch';
+const SRCH0 = { q: '', cty: '', town: '', near: '', src: '' };
+let SRCH = (() => { try { return { ...SRCH0, ...JSON.parse(sessionStorage.getItem(SRCH_KEY) || '{}') }; } catch (e) { return { ...SRCH0 }; } })();
+const SRCH_ON = () => !!(SRCH.q.trim() || SRCH.cty || SRCH.near || SRCH.src);
+let REGION = null, _regP = null, SRCH_IDX = null, SRCH_POS = null, SRCH_SHOW = 60, SRCH_LAST = [];
+function loadRegion() {
+  if (REGION) return Promise.resolve(REGION);
+  if (!_regP) _regP = getJSON(new URL('assets/region.json', location.href).href, 20000)
+    .then(d => {
+      if (!d || d.v !== 1 || !Array.isArray(d.rows)) throw new Error('格式不對');
+      // 每一列是「長度、編號」交替的連續編碼；展開成一整塊，查的時候直接算位置
+      const g = new Int16Array(d.ny * d.nx);
+      d.rows.forEach((r, j) => { let x = j * d.nx; for (let k = 0; k < r.length; k += 2) { g.fill(r[k + 1], x, x + r[k]); x += r[k]; } });
+      return (REGION = { d, g });
+    })
+    .catch(() => { _regP = null; return null; });
+  return _regP;
+}
+// 座標 → ['台北市', '信義區']；格網外、海上回 null
+function regionOf(lat, lng) {
+  if (!REGION || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const d = REGION.d, j = Math.floor((lat - d.lat0) / d.d), i = Math.floor((lng - d.lng0) / d.d);
+  if (j < 0 || j >= d.ny || i < 0 || i >= d.nx) return null;
+  const k = REGION.g[j * d.nx + i];
+  return k >= 0 ? d.towns[k] : null;
+}
+const COUNTY_ORDER = ['基隆市', '台北市', '新北市', '桃園市', '新竹市', '新竹縣', '苗栗縣', '台中市', '彰化縣', '南投縣', '雲林縣',
+  '嘉義市', '嘉義縣', '台南市', '高雄市', '屏東縣', '宜蘭縣', '花蓮縣', '台東縣', '澎湖縣', '金門縣', '連江縣'];
+// 景點清單的縣市只寫「基隆」「新竹」（不分縣市）、連江寫「馬祖」
+const cshort = n => { const c = cnorm(n).replace(/[縣市]$/, ''); return c === '連江' ? '馬祖' : c; };
+const SRCH_PUNCT = /[\s\-_.,，、。・·•()（）\[\]【】「」『』\/\\|:：;；+＋'"!！~～#＃@&＆%％]/g;
+const snorm = s => String(s || '').normalize('NFKC').toLowerCase().replace(/臺/g, '台').replace(SRCH_PUNCT, '');
+// 路名簡寫也放進去：國道1號＝國1、台2線＝台2
+const sexpand = s => s + '|' + s.replace(/國道(\d+)號?/g, '國$1').replace(/台(\d+[甲乙丙丁]?)線/g, '台$1');
+function srchIndex() {
+  const n = (CAMS ? CAMS.length : 0) + (WFU ? WFU.items.length : 0) + (REGION ? 1 : 0);
+  if (SRCH_IDX && SRCH_IDX.n === n) return SRCH_IDX.list;
+  const list = [];
+  (CAMS || []).forEach((c, i) => {
+    const r = regionOf(c.lat, c.lng) || ['', ''];
+    list.push({ s: 'cam', i, c, name: c.name, cty: r[0], cs: cshort(r[0]), town: r[1], lat: c.lat, lng: c.lng,
+      nm: sexpand(snorm(c.name)), hay: sexpand(snorm([c.name, c.src, r[0], r[1]].join(' '))) });
+  });
+  (WFU ? WFU.items : []).forEach((it, i) => {
+    const c = wfuCam(it);
+    if (c) list.push({ s: 'wfu', i, c, name: it[0], cty: '', cs: it[1] || '', town: '', nm: sexpand(snorm(it[0])),
+      hay: sexpand(snorm([it[0], it[1], ...(it[5] || [])].join(' '))) });
+  });
+  SRCH_IDX = { n, list };
+  return list;
+}
+// 「字可以不連續」：a 的每個字依序出現在 b 裡
+function subseq(a, b) { let j = 0; for (const ch of b) if (ch === a[j] && ++j === a.length) return true; return j === a.length; }
+// 「容許錯一個字」：a 跟 b 的某一段，編輯距離不超過 1（逐字掃一遍，標題都很短）
+function near1(a, b) {
+  let prev = Array.from({ length: a.length + 1 }, (_, i) => i);
+  for (const ch of b) {
+    const cur = [0];
+    for (let i = 1; i <= a.length; i++) cur[i] = Math.min(prev[i] + 1, cur[i - 1] + 1, prev[i - 1] + (a[i - 1] === ch ? 0 : 1));
+    if (cur[a.length] <= 1) return true;
+    prev = cur;
+  }
+  return false;
+}
+function srchTokens(q) {
+  return String(q || '').split(/\s+/).filter(Boolean).map(t => {
+    const w = t.replace(/＊/g, '*').replace(/？/g, '?');
+    if (/[*?]/.test(w)) {
+      const v = w.split(/([*?])/).map(x => x === '*' ? '.*' : x === '?' ? '.' : snorm(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('');
+      return v.replace(/[.*]/g, '') ? { wild: true, re: new RegExp(v) } : null;
+    }
+    const v = snorm(w);
+    return v ? { v } : null;
+  }).filter(Boolean);
+}
+// 一個詞的分數：名稱裡有 > 其他欄位有 > 萬用字元 > 字不連續 > 錯一個字；0＝不符合
+function tokScore(t, it) {
+  if (t.wild) return t.re.test(it.nm) ? 4 : t.re.test(it.hay) ? 3 : 0;
+  if (it.nm.includes(t.v)) return 6;
+  if (it.hay.includes(t.v)) return 4;
+  if (t.v.length >= 2 && subseq(t.v, it.nm)) return 2;
+  if (t.v.length >= 3 && near1(t.v, it.hay)) return 1;
+  return 0;
+}
+function srchRun() {
+  const toks = srchTokens(SRCH.q), list = srchIndex();
+  const [mode, km] = (SRCH.near || ':').split(':'), R = +km || 0;
+  const pts = mode === 'me' ? (SRCH_POS ? [SRCH_POS] : []) : mode === 'st' ? camStations() : null;
+  const out = [];
+  for (const it of list) {
+    if (SRCH.src && it.s !== SRCH.src) continue;
+    if (SRCH.cty && (it.s === 'cam' ? it.cty !== SRCH.cty : it.cs !== cshort(SRCH.cty))) continue;
+    if (SRCH.town && it.town !== SRCH.town) continue;
+    let d = null;
+    if (pts) {
+      if (!pts.length || !Number.isFinite(it.lat)) continue;
+      d = Math.min(...pts.map(p => distKm(p, it)));
+      if (d > R) continue;
+    }
+    let sc = 0;
+    for (const t of toks) { const v = tokScore(t, it); if (!v) { sc = -1; break; } sc += v; }
+    if (sc < 0) continue;
+    out.push({ it, sc, d });
+  }
+  out.sort((a, b) => b.sc - a.sc || (a.d ?? 0) - (b.d ?? 0) || a.it.name.length - b.it.name.length);
+  return out;
+}
+// 監視器地圖：搜尋時只亮搜到的點，框到它們
+function srchMapApply(fit) {
+  if (!CAMDOTS || !CAMS || !CAMMAP || !document.getElementById('camMap')) return;
+  const on = SRCH_ON(), hit = new Set(on ? SRCH_LAST.filter(r => r.it.s === 'cam').map(r => r.it.i) : []);
+  CAMS.forEach((c, i) => CAMDOTS.list[i].setStyle(camDotStyle(c, on && !hit.has(i))));
+  if (on && fit && hit.size && CAMMAP) {
+    const b = L.latLngBounds([...hit].map(i => [CAMS[i].lat, CAMS[i].lng]));
+    CAMMAP.fitBounds(b.pad(0.2), { maxZoom: 15 });
+  }
+}
+function srchSave() { try { sessionStorage.setItem(SRCH_KEY, JSON.stringify(SRCH)); } catch (e) {} }
+async function renderSrch() {
+  const box = document.getElementById('srchBox');
+  if (!box) return;
+  const sel = (id, lb, opts, cur) => `<label class="wy-sel"><span>${lb}</span><select id="${id}">${
+    opts.map(([v, l]) => `<option value="${esc(v)}" ${cur === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  const draw = () => {
+    const towns = REGION && SRCH.cty ? REGION.d.towns.filter(t => t[0] === SRCH.cty).map(t => t[1]).sort() : [];
+    box.innerHTML = `<div class="srch">
+      <div class="srch-q"><input type="search" id="srchQ" value="${esc(SRCH.q)}" enterkeyhint="search" autocomplete="off"
+        placeholder="搜尋監視器、景點（例：八斗子、國1 汐止、台2*線）" aria-label="搜尋監視器與景點">
+        <button type="button" class="btn sm" id="srchClr" ${SRCH_ON() ? '' : 'hidden'}>清除</button></div>
+      <div class="wy-bar">${sel('srchCty', '縣市', [['', '全部'], ...COUNTY_ORDER.map(c => [c, c])], SRCH.cty)}${
+        sel('srchTown', '鄉鎮', [['', towns.length ? '全部' : '先選縣市'], ...towns.map(t => [t, t])], SRCH.town)}</div>
+      <div class="wy-bar">${sel('srchNear', '範圍', [['', '不限'], ['me:1', '我附近 1 km'], ['me:3', '我附近 3 km'], ['me:10', '我附近 10 km'],
+        ['st:1', '站臺 1 km 內'], ['st:3', '站臺 3 km 內'], ['st:10', '站臺 10 km 內']], SRCH.near)}${
+        sel('srchSrc', '來源', [['', '全部'], ['cam', '監視器'], ['wfu', '景點海象']], SRCH.src)}</div>
+      <div id="srchRes"></div></div>`;
+    $('#srchTown').disabled = !towns.length;
+    const q = $('#srchQ');
+    let tm = 0;
+    q.addEventListener('input', () => { clearTimeout(tm); tm = setTimeout(() => { SRCH.q = q.value; SRCH_SHOW = 60; srchSave(); results(true); }, 200); });
+    q.addEventListener('keydown', e => { if (e.key === 'Enter') q.blur(); });
+    $('#srchCty').onchange = e => { SRCH.cty = e.target.value; SRCH.town = ''; SRCH_SHOW = 60; srchSave(); draw(); };
+    $('#srchTown').onchange = e => { SRCH.town = e.target.value; SRCH_SHOW = 60; srchSave(); results(true); };
+    $('#srchSrc').onchange = e => { SRCH.src = e.target.value; SRCH_SHOW = 60; srchSave(); results(true); };
+    $('#srchNear').onchange = e => { SRCH.near = e.target.value; SRCH_SHOW = 60; srchSave(); if (SRCH.near.startsWith('me')) locate(); else results(true); };
+    $('#srchClr').onclick = () => { SRCH = { ...SRCH0 }; srchSave(); draw(); };
+    results(true);
+  };
+  const locate = () => {
+    if (SRCH_POS && Date.now() - SRCH_POS.t < 5 * 60e3) return results(true);
+    $('#srchRes').innerHTML = '<p class="hint">定位中…（第一次會問要不要給位置）</p>';
+    if (!navigator.geolocation) { $('#srchRes').innerHTML = '<div class="msg w">這個瀏覽器不能定位，改選「站臺」或縣市。</div>'; return; }
+    navigator.geolocation.getCurrentPosition(p => { SRCH_POS = { lat: p.coords.latitude, lng: p.coords.longitude, t: Date.now() }; results(true); },
+      () => { const r = $('#srchRes'); if (r) r.innerHTML = '<div class="msg w">拿不到位置（沒給權限或訊號不好）。可到 iPhone 設定 › 隱私權 › 定位服務 › Safari 打開，或改選「站臺」範圍。</div>'; },
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
+  };
+  const results = fit => {
+    const res = document.getElementById('srchRes');
+    if (!res) return;
+    const clr = $('#srchClr');
+    if (clr) clr.hidden = !SRCH_ON();   // 打字、清掉字都不重畫整個框（重畫會讓輸入框失焦、iPhone 鍵盤收起來）
+    if (!SRCH_ON()) { res.innerHTML = ''; SRCH_LAST = []; srchMapApply(); return; }
+    if (SRCH.near.startsWith('me') && !SRCH_POS) return locate();
+    SRCH_LAST = srchRun();
+    const nc = SRCH_LAST.filter(r => r.it.s === 'cam').length;
+    const meta = r => [r.it.s === 'cam' ? r.it.c.src : '景點海象', r.it.town ? `${r.it.cty}${r.it.town}` : r.it.cty || (r.it.cs ? r.it.cs : ''),
+      r.d != null ? (r.d < 1 ? '<1 km' : r.d.toFixed(1) + ' km') : ''].filter(Boolean).join('・');
+    res.innerHTML = `<p class="hint" style="margin:0.25rem 0">${SRCH_LAST.length ? `找到 ${SRCH_LAST.length.toLocaleString()} 支（監視器 ${nc.toLocaleString()}、景點海象 ${(SRCH_LAST.length - nc).toLocaleString()}）${
+        nc ? '　地圖上只亮搜到的' : ''}` : '沒有符合的。可以少打幾個字、拿掉篩選，或用 * 代替不確定的字。'}</p>
+      <div class="srch-res">${SRCH_LAST.slice(0, SRCH_SHOW).map(r => `<button type="button" class="cam-chip${camIssue(r.it.c) ? ' bad' : ''}"
+        data-sk="${r.it.s}:${r.it.i}" data-key="${esc(r.it.c.key)}">${esc(r.it.name)}<small>${esc(meta(r))}</small>${camWhy(r.it.c)}</button>`).join('')}</div>
+      ${SRCH_LAST.length > SRCH_SHOW ? `<button type="button" class="btn sm wide" id="srchMore">再顯示 ${Math.min(60, SRCH_LAST.length - SRCH_SHOW)} 支</button>` : ''}`;
+    res.querySelector('.srch-res').onclick = e => {
+      const b = e.target.closest('[data-sk]'); if (!b) return;
+      const [k, i] = b.dataset.sk.split(':');
+      if (k === 'cam') openCam(+i); else { const c = wfuCam(WFU.items[+i]); if (c) showCam(c); }
+    };
+    if ($('#srchMore')) $('#srchMore').onclick = () => { SRCH_SHOW += 60; results(); };
+    srchMapApply(fit);
+  };
+  draw();
+  // 監視器、景點、區域表三份都載好才搜；載的時候框照樣能打字
+  if (SRCH_ON()) $('#srchRes').innerHTML = '<p class="hint">載入清單…</p>';
+  await Promise.all([loadCams(), loadWfu(), loadRegion()]);
+  if (document.getElementById('srchBox') === box) results(true);
 }
 
 /* ═══ AI 系集（Weather Lab，實驗）══════════════════════════
@@ -12726,14 +13041,15 @@ window.checkUpdate = checkUpdate; window.fetchDgpa = fetchDgpa;
       _windySrc = '';
       renderWindy();
     });
+    // 搜尋框在監視器、景點海象兩頁都有，搜的範圍是兩份清單一起
     if (mode === 'cam') {
-      box.innerHTML = seg + '<div id="camBox"></div>';
-      bindSeg(); renderCams();
+      box.innerHTML = seg + '<div id="srchBox"></div><div id="camBox"></div>';
+      bindSeg(); renderSrch(); renderCams();
       return;
     }
     if (mode === 'wfu') {
-      box.innerHTML = seg + '<div id="wfuBox"></div>';
-      bindSeg(); renderWfu();
+      box.innerHTML = seg + '<div id="srchBox"></div><div id="wfuBox"></div>';
+      bindSeg(); renderSrch(); renderWfu();
       return;
     }
     const c = windyCenter();
