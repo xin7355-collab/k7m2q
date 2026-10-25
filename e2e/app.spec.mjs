@@ -30,7 +30,7 @@ async function boot(page, lightning, typhoon = PLACEHOLDER) {
   await page.route('**/data/lightning.json', r => r.fulfill({ json: lightning }));
   await page.route('**/data/typhoon.json', r => r.fulfill({ json: typhoon }));
   // 停班停課、天氣（雨量陣風特報）後端檔、颱風強度表：當成還沒產生，結果不看 repo 裡有沒有這些檔
-  await page.route(/\/data\/(dgpa|tyhist|wx|ens|ecens)\.json/, r => r.fulfill({ status: 404, body: '' }));
+  await page.route(/\/data\/(dgpa|tyhist|wx|ens|ecens|cctv)\.json/, r => r.fulfill({ status: 404, body: '' }));
   await page.addInitScript(st => {
     // 初始化腳本也會在 Windy 的 iframe（被擋掉後是錯誤頁）裡跑，那裡碰 localStorage 會丟錯
     if (window.top !== window) return;
@@ -198,6 +198,7 @@ async function bootWith(page, stations, extra = {}) {
   await page.route('**/data/wx.json', r => extra.wx ? r.fulfill({ json: extra.wx }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/ens.json', r => extra.ens ? r.fulfill({ json: extra.ens }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/ecens.json', r => extra.ecens ? r.fulfill({ json: extra.ecens }) : r.fulfill({ status: 404, body: '' }));
+  await page.route('**/data/cctv.json', r => extra.cctv ? r.fulfill({ json: extra.cctv }) : r.fulfill({ status: 404, body: '' }));
   await page.addInitScript(([sts, ex]) => {
     if (window.top !== window) return;
     if (localStorage.getItem('galepost.v2')) return;
@@ -2007,6 +2008,9 @@ test('Windy 即時影像搬到路徑頁「對焦站臺」右邊的分頁；天�
   await page.locator('#tySeg button[data-ty="map"]').click();
   await expect(page.locator('#mapFocus button')).toHaveText(['全域', '對焦站臺', '即時影像']);
   await page.locator('#mapFocus button[data-mf="wy"]').click();
+  // v90 起即時影像預設是監視器地圖，Windy 在旁邊的分頁
+  await expect(page.locator('#liveSeg button')).toHaveText(['監視器', 'Windy 風雨圖']);
+  await page.locator('#liveSeg button[data-live="wy"]').click();
   await expect(page.locator('#tyWindy')).toContainText('即時影像 Windy');
   await expect(page.locator('#tyWindy iframe')).toHaveCount(1);
   await expect(page.locator('#mapWrap')).toBeHidden();
@@ -2614,5 +2618,58 @@ test('站臺類別顏色：每個類別預設不同色（避開狀態的綠琥�
   const inp = page.locator('#shBody input[type="color"][data-t="t1"]');
   await inp.evaluate(e => { e.value = '#123456'; e.dispatchEvent(new Event('input', { bubbles: true })); });
   expect(await page.evaluate(() => typeColor(DB.types[0]))).toBe('#123456');
+  expect(errors).toEqual([]);
+});
+
+/* ── v90：即時影像 › 監視器地圖（TDX 官方清單；使用者 10/25）── */
+const CCTV = { v: 1, src: 'TDX', updated: '2026-10-25T20:00:00+08:00', total: 3, groups: [
+  { k: 'Freeway', name: '國道', at: '2026-10-25T20:00:00+08:00', n: 2, cams: [
+    [25.12299, 121.7357, '國道1號 0K+000 （基隆端→基隆交流道）', 'https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10000', ''],
+    [22.6, 120.3, '國道1號 高雄端', 'https://cctvs.freeway.gov.tw/abs2mjpg/bmjpg?camera=1', '']] },
+  { k: 'Highway', name: '省道', at: '2026-10-25T20:00:00+08:00', n: 1, cams: [
+    [25.10529, 121.7321, '台62線 9K+020', 'https://cctv-ss02.thb.gov.tw:443/T62-9K+020', 'https://cctv-ss02.thb.gov.tw:443/T62-9K+020/snapshot']] }] };
+
+test('即時影像 › 監視器：臺灣地圖上有官方監視器，站臺附近列最近幾支，點了直接看畫面；看不了給原始畫面與附近影像連結；關掉就停串流', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: CCTV });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#liveSeg button[data-live="cam"]')).toHaveAttribute('aria-pressed', 'true');   // 預設監視器
+  await expect(page.locator('#camMap')).toBeVisible();
+  expect(await page.evaluate(() => { let n = 0; CAMMAP.eachLayer(l => { if (l instanceof L.CircleMarker) n++; }); return n; })).toBe(3);
+  // 站臺附近：近的兩支、由近到遠；遠在高雄的不列
+  const chips = page.locator('#camNear .cam-chip');
+  await expect(chips).toHaveCount(2);
+  await expect(chips.nth(0)).toContainText('國道1號 0K+000');
+  await expect(chips.nth(1)).toContainText('台62線');
+  await expect(page.locator('#camNear .cam-tw')).toHaveAttribute('href', /tw\.live\/nearby\/\?lat=25\.13000&lon=121\.74000/);
+  await expect(page.locator('#camBox .ai-cite')).toContainText('交通部 TDX');
+  // 點國道那支：直接把 MJPEG 當圖片；測試擋外連 → 載不出來 → 改請他開原始畫面
+  await chips.nth(0).click();
+  await expect(page.locator('#shTitle')).toHaveText('國道1號 0K+000 （基隆端→基隆交流道）');
+  expect(await page.locator('#camImg').getAttribute('src')).toBe('https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10000');
+  await expect(page.locator('#camWait')).toContainText('按下面「原始畫面 ↗」開');
+  await expect(page.locator('#shBody a', { hasText: '原始畫面' })).toHaveAttribute('href', 'https://cctvn.freeway.gov.tw/abs2mjpg/bmjpg?camera=10000');
+  await expect(page.locator('#shBody a', { hasText: '附近影像' })).toHaveAttribute('href', 'https://tw.live/nearby/?lat=25.12299&lon=121.7357');
+  await expect(page.locator('#shBody')).toContainText('距 基隆測試站');
+  // 省道那支：影像網址失敗會改試截圖
+  await page.locator('#shClose').click();
+  await chips.nth(1).click();
+  await expect.poll(() => page.locator('#camImg').getAttribute('src')).toBe('https://cctv-ss02.thb.gov.tw:443/T62-9K+020/snapshot');
+  // 關掉視窗：src 清掉（MJPEG 串流才會斷）
+  await page.locator('#shClose').click();
+  expect(await page.evaluate(() => { const im = document.getElementById('camImg'); return im ? im.getAttribute('src') : null; })).toBeNull();
+  // 切到 Windy 會記住
+  await page.locator('#liveSeg button[data-live="wy"]').click();
+  await expect(page.locator('#tyWindy .wy-bar')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('galepost.ui.live'))).toBe('wy');
+  expect(errors).toEqual([]);
+});
+
+test('即時影像 › 監視器：清單還沒產生時講原因，站臺附近改給外部連結', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull() });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camBox .msg.w')).toContainText('監視器清單讀不到');
+  await expect(page.locator('#camBox a', { hasText: '基隆測試站 附近' })).toHaveAttribute('href', /tw\.live\/nearby\//);
   expect(errors).toEqual([]);
 });

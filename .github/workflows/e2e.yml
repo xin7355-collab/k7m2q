@@ -67,6 +67,7 @@ jobs:
           python3 scripts/fetch_gate.py selftest
           python3 scripts/fetch_ens.py selftest
           python3 scripts/fetch_ecens.py selftest
+          python3 scripts/fetch_cctv.py selftest
 
       - run: npx playwright test
 

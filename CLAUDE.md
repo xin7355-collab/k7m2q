@@ -75,6 +75,8 @@
   `scripts/fetch_wx.py`（同一個 cwa.yml，雨量＋陣風＋豪大雨雷雨特報＋縣市預報寫 `data/wx.json`，沒填個人授權碼的同事靠它看雨量陣風預報、出門建議與站臺豪雨紀錄）、
   `scripts/fetch_ens.py`（同一個 cwa.yml，Weather Lab 的 AI 系集颱風路徑換算成臺灣周邊 8／10 級風機率格網 `data/ens.json`；
   即時資料條款不准公開轉存原始路徑——只放推不回原始資料的推算結果，畫面要顯示 Weather Lab 與條款指定的 © 聲明；不進待機建議）、
+  `scripts/fetch_cctv.py` + `.github/workflows/cctv.yml`（每週二、五從交通部 TDX 抓國道／省道／各縣市監視器清單 `data/cctv.json`，
+  給「即時影像 › 監視器」地圖；不帶金鑰每 IP 每天 20 次，分批輪抓。畫面直連原機關；tw.live 不能內嵌，只做「附近影像」外連）、
   `scripts/build_tyhist.py` + `.github/workflows/tyhist.yml`（每週從 IBTrACS 建 `data/tyhist.json`，名牌的「今年／歷史第幾強」）、
   `assets/coast.json`（戰情圖離線海岸線，`python3 scripts/build_coast.py build` 重產）、
   `e2e/`（Playwright 測試，`npm test`）。每輪做了什麼寫在 commit 內文（`git log`），不另放紀錄檔。

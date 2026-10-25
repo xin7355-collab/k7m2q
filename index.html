@@ -651,6 +651,25 @@ details.more>.hint{margin-top:0.25rem}
 .ec-p{flex:none;min-width:5.5rem;text-align:right;padding:0.125rem 0.375rem;border-radius:var(--r3);font:700 0.8125rem var(--mono);color:#FFC4E1;
   background:linear-gradient(90deg,rgba(255,196,225,.14) var(--v),transparent var(--v));box-shadow:inset 0 0 0 1px rgba(255,196,225,.3)}
 .ec-row .ai-l b{color:#FFC4E1}
+/* 即時影像：監視器地圖 */
+.cam-map{height:min(26rem,58vh);border:1px solid var(--edge2);border-radius:var(--r);overflow:hidden;background:var(--bg2);
+  position:relative;z-index:0}   /* 自成一層：Leaflet 的縮放鈕 z-index 800，不包起來會浮到底部視窗上面 */
+.cam-lg i{display:inline-block;width:0.5rem;height:0.5rem;border-radius:50%;background:var(--c);margin:0 0.25rem 0 0.625rem;vertical-align:0}
+.cam-st{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem;padding:0.5rem 0;border-bottom:1px solid var(--edge)}
+.cam-st .stn{flex:0 0 100%;font-size:0.875rem}
+.cam-chip{display:inline-flex;align-items:baseline;gap:0.375rem;max-width:100%;padding:0.375rem 0.625rem;border:1px solid var(--edge2);
+  border-radius:var(--r);background:var(--surf);color:var(--fg2);font-size:0.75rem;text-align:left;min-height:2.25rem}
+.cam-chip small{color:var(--fg4);font-family:var(--mono);white-space:nowrap}
+.cam-tw{font-size:0.75rem;color:var(--fg3);margin-left:auto}
+.cam-view{position:relative;background:#000;border-radius:var(--r);overflow:hidden;min-height:12rem;display:flex;align-items:center;justify-content:center}
+.cam-view img{display:block;width:100%;height:auto}
+.cam-view img[hidden]{display:none}
+.cam-wait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;text-align:center;
+  color:var(--fg3);font-size:0.8125rem;background:rgba(0,0,0,.6)}
+.cam-wait[hidden]{display:none}
+.leaflet-tooltip.cam-sttip{background:transparent;border:0;box-shadow:none;color:#EAF4F8;font:700 10px var(--mono);
+  text-shadow:0 0 3px #08131A,0 0 6px #08131A;padding:0}
+.leaflet-tooltip.cam-sttip::before{display:none}
 .ec-lg{display:flex;align-items:center;gap:0.5rem;margin:0 0 0.625rem}
 .ec-lg span{flex:1;min-width:0}
 .ec-lg i{display:inline-block;width:1.25rem;height:0;border-top:1.5px solid #FFC4E1;vertical-align:middle;margin-right:0.375rem}
@@ -1950,7 +1969,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v89';
+const APP_VER = 'v90';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -8110,6 +8129,130 @@ function mapLegend() {
   </p>${typeLegend()}`;
 }
 
+/* ═══ 即時影像：道路監視器地圖 ═══════════════════════════════
+   使用者 10/25：「把臺灣地圖加入即時影像，颱風時段可以看到現場」。
+   清單：後端 scripts/fetch_cctv.py 從交通部 TDX 整理（國道、省道、各縣市，約 6,700 支，附座標）→ data/cctv.json，
+   進這個分頁才載入（約 1 MB，不拖慢開 App）。畫面直接連各機關的原始網址：
+   - 有截圖網址（公路局、新竹市）→ 每 10 秒換一張；否則把影像網址當圖片（國道、多數縣市是 MJPEG 串流）；
+   - 圖片載不出來（有些縣市給的是網頁，不是影像）→ 不硬嵌，給「原始畫面 ↗」在新分頁開。
+   tw.live 不能內嵌（X-Frame-Options），它的 FAQ 也說嵌入要找原始單位授權，所以只做「附近影像 ↗」外部連結。
+   流量：關掉視窗就把 <img> 清空，MJPEG 才會停；颱風天手機網路慢，不在背景播。 */
+const LIVE_KEY = 'galepost.ui.live';
+const liveMode = () => { try { return localStorage.getItem(LIVE_KEY) === 'wy' ? 'wy' : 'cam'; } catch (e) { return 'cam'; } };
+let CAMS = null, CAMS_AT = '', CAMS_ERR = '', CAMMAP = null, _camP = null;
+const CAM_COL = { Freeway: '#7FA8FF', Highway: '#4FD1C5', city: '#E6EEF2' };
+const camCol = k => CAM_COL[k] || CAM_COL.city;
+function loadCams() {
+  if (CAMS) return Promise.resolve(CAMS);
+  if (!_camP) _camP = getJSON(new URL('data/cctv.json', location.href).href, 20000)
+    .then(j => {
+      if (!j || j.v !== 1 || !Array.isArray(j.groups)) throw new Error('格式不對');
+      CAMS = []; CAMS_AT = j.updated || '';
+      for (const g of j.groups) for (const c of g.cams || []) {
+        CAMS.push({ lat: c[0], lng: c[1], name: c[2], url: c[3], img: c[4], g: g.k, src: g.name });
+      }
+      return CAMS;
+    })
+    .catch(e => { CAMS_ERR = String((e && e.message) || e); _camP = null; return null; });
+  return _camP;
+}
+const camStations = () => DB.stations.filter(s => IS_LIVE(s) && Number.isFinite(s.lat) && Number.isFinite(s.lng));
+// 每站最近的幾支（15 km 內）：颱風天要看的是自己站臺附近
+function camNear(st, n = 3, km = 15) {
+  if (!CAMS) return [];
+  const out = [];
+  for (let i = 0; i < CAMS.length; i++) {
+    const c = CAMS[i];
+    if (Math.abs(c.lat - st.lat) > 0.2 || Math.abs(c.lng - st.lng) > 0.2) continue;
+    const d = distKm(st, c);
+    if (d <= km) out.push({ i, d });
+  }
+  return out.sort((a, b) => a.d - b.d).slice(0, n);
+}
+async function renderCams() {
+  const box = document.getElementById('camBox');
+  if (!box) return;
+  box.innerHTML = '<div class="msg i">載入監視器清單…</div>';
+  await loadCams();
+  if (!document.getElementById('camBox')) return;          // 等的時候已經切走了
+  const twl = (lat, lng) => `https://tw.live/nearby/?lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}`;
+  const sts = camStations();
+  if (!CAMS) {
+    box.innerHTML = `<div class="msg w">監視器清單讀不到（${esc(CAMS_ERR || '還沒產生')}）。後端每週二、五更新；先用外部網站看站臺附近：</div>
+      <div class="btnrow">${sts.map(s => `<a class="btn sm" href="${twl(s.lat, s.lng)}" target="_blank" rel="noopener">${esc(s.name)} 附近 ↗</a>`).join('')}</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="cam-map" id="camMap"></div>
+    <p class="hint" style="margin:0.375rem 0 0.75rem">${CAMS.length.toLocaleString()} 支官方監視器　點圓點看即時畫面　<span class="cam-lg">
+      <i style="--c:${CAM_COL.Freeway}"></i>國道<i style="--c:${CAM_COL.Highway}"></i>省道<i style="--c:${CAM_COL.city}"></i>縣市</span></p>
+    <div id="camNear"></div>
+    <p class="ai-cite">監視器清單：交通部 TDX 運輸資料流通服務（政府資料開放授權條款）${CAMS_AT ? `，${esc(CAMS_AT.slice(0, 10))} 更新` : ''}。
+      即時畫面由各來源機關提供，版權屬原機關；畫面常有數秒到數十秒延遲。「附近影像 ↗」開的是民間網站 tw.live。</p>`;
+  // 站臺附近：一站一列，最近的三支
+  const near = sts.map(s => ({ s, n: camNear(s) }));
+  $('#camNear').innerHTML = sts.length ? `<div class="sec"><h2>站臺附近</h2></div>` + near.map(({ s, n }) => `<div class="cam-st">
+      <b class="stn">${esc(s.name)}</b>${n.length ? n.map(x => `<button type="button" class="cam-chip" data-cam="${x.i}">
+        ${esc(CAMS[x.i].name)}<small>${x.d < 1 ? '<1' : x.d.toFixed(1)} km</small></button>`).join('')
+        : '<span class="hint">15 km 內沒有官方監視器</span>'}
+      <a class="cam-tw" href="${twl(s.lat, s.lng)}" target="_blank" rel="noopener">附近影像 ↗</a></div>`).join('') : '';
+  $('#camNear').onclick = e => { const b = e.target.closest('[data-cam]'); if (b) openCam(+b.dataset.cam); };
+  if (window.__noLeaflet || typeof L === 'undefined') { $('#camMap').innerHTML = '<div class="ph">地圖元件沒載入，下面的站臺附近清單照樣能點。</div>'; return; }
+  if (CAMMAP) { try { CAMMAP.remove(); } catch (e) {} CAMMAP = null; }
+  CAMMAP = L.map('camMap', { zoomControl: false, attributionControl: true, minZoom: 6, maxZoom: 18 }).setView([23.7, 121], 7);
+  CAMMAP.attributionControl.setPrefix('');
+  L.control.zoom({ position: 'bottomleft' }).addTo(CAMMAP);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', { subdomains: 'abcd', maxZoom: 18,
+    attribution: '&copy; OpenStreetMap 貢獻者, &copy; CARTO' }).addTo(CAMMAP);
+  // 六千多個點用 canvas 畫；手指點不準，點擊容許範圍放大到 10 px
+  const rend = L.canvas({ padding: 0.3, tolerance: 10 });
+  CAMS.forEach((c, i) => L.circleMarker([c.lat, c.lng], { renderer: rend, radius: 4, weight: 1, color: '#040A10',
+    fillColor: camCol(c.g), fillOpacity: 0.9 }).on('click', () => openCam(i)).addTo(CAMMAP));
+  sts.forEach(s => L.marker([s.lat, s.lng], { icon: stPin(s, typeOf(s.type)), zIndexOffset: 800 })
+    .bindTooltip(s.name, { permanent: true, direction: 'bottom', className: 'cam-sttip' }).addTo(CAMMAP));
+  // 有站臺就框站臺（颱風天看的是自己附近），沒有就看全臺
+  if (sts.length > 1) CAMMAP.fitBounds(L.latLngBounds(sts.map(s => [s.lat, s.lng])).pad(0.25));
+  else if (sts.length === 1) CAMMAP.setView([sts[0].lat, sts[0].lng], 12);
+  setTimeout(() => CAMMAP && CAMMAP.invalidateSize(), 80);
+}
+let _camTimer = 0;
+function stopCam() {
+  clearInterval(_camTimer); _camTimer = 0;
+  const im = document.getElementById('camImg');
+  if (im) { im.onerror = null; im.removeAttribute('src'); }   // 清掉 src，MJPEG 串流才會斷
+}
+function openCam(i) {
+  const c = CAMS && CAMS[i]; if (!c) return;
+  const sts = camStations();
+  let near = null;
+  for (const s of sts) { const d = distKm(s, c); if (!near || d < near.d) near = { s, d }; }
+  const src = c.url || c.img;
+  openSheet(c.name, `
+    <div class="cam-view"><img id="camImg" alt=""><div class="cam-wait" id="camWait">載入畫面中…</div></div>
+    <p class="hint" style="margin:0.5rem 0 0.75rem">來源：${esc(c.src)}${near ? `　距 ${esc(near.s.name)} ${near.d.toFixed(1)} km` : ''}${c.img && !c.url ? '　每 10 秒更新一張' : ''}</p>
+    <div class="btnrow">
+      ${src ? `<a class="btn" href="${esc(src)}" target="_blank" rel="noopener">原始畫面 ↗</a>` : ''}
+      <a class="btn" href="https://tw.live/nearby/?lat=${c.lat}&lon=${c.lng}" target="_blank" rel="noopener">附近影像 ↗</a></div>`,
+    () => {
+      const im = $('#camImg'), wait = $('#camWait');
+      const shown = () => { im.hidden = false; if (wait) wait.hidden = true; };
+      im.onload = shown;
+      im.onerror = () => {
+        // 有截圖網址的話再試一次截圖；都不行就是網頁不是影像，請他開原始畫面
+        if (c.img && im.dataset.tried !== 'img') { im.dataset.tried = 'img'; im.src = c.img; return; }
+        clearInterval(_camTimer); _camTimer = 0;          // 載不出來就不必一直換；src 留著（失敗的連線本來就沒在傳）
+        im.hidden = true;                                  // 破圖示不要露出來
+        if (wait) { wait.hidden = false; wait.innerHTML = '這支的畫面不是影像檔（多半是機關自己的播放網頁），按下面「原始畫面 ↗」開。'; }
+      };
+      if (c.url) im.src = c.url;
+      else { im.dataset.tried = 'img'; im.src = c.img; }
+      // 只有截圖的，定時換新的一張（加時間參數避開快取）
+      if (!c.url && c.img) _camTimer = setInterval(() => {
+        if (!document.getElementById('camImg')) return stopCam();
+        im.src = c.img + (c.img.includes('?') ? '&' : '?') + '_t=' + Date.now();
+      }, 10000);
+    });
+}
+
 /* ═══ AI 系集（Weather Lab，實驗）══════════════════════════
    後端（scripts/fetch_ens.py）把 Google DeepMind／Google Research 的 AI 系集颱風路徑（50～64 組成員）
    換算成臺灣周邊 0.1° 格點的「8 級風（34 kt）／10 級風（50 kt）掃到機率」與成員中位數時間，寫成 data/ens.json。
@@ -10570,6 +10713,7 @@ function bindToggle(sel, get, set) {
 
 /* ── 底部彈出面板 ────────────────────────────────────── */
 function openSheet(title, html, mount) {
+  stopCam();                          // 監視器畫面是長連線串流，換別的視窗前先斷掉
   $('#shTitle').textContent = title;
   /* 換一個新的 #shBody：排序、類別視窗會在它上面掛 click／input 監聽，以前從來沒拿掉,
      開過幾次之後每一次點擊都會跑好幾個舊視窗的處理函式。 */
@@ -10580,7 +10724,7 @@ function openSheet(title, html, mount) {
   document.body.style.overflow = 'hidden';
   if (mount) mount();
 }
-function closeSheet() { $('#sheet').classList.remove('on'); document.body.style.overflow = ''; }
+function closeSheet() { stopCam(); $('#sheet').classList.remove('on'); document.body.style.overflow = ''; }
 $('#shClose').onclick = closeSheet;
 $('.sheet-bg').onclick = closeSheet;
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
@@ -12298,6 +12442,22 @@ window.checkUpdate = checkUpdate; window.fetchDgpa = fetchDgpa;
   function renderWindy() {
     const box = document.getElementById('tyWindy');
     if (!box) return;
+    // 使用者 10/25：即時影像要能從臺灣地圖點監視器看現場。預設監視器，Windy 風雨圖放第二個
+    const mode = liveMode();
+    const seg = `<div class="seg" id="liveSeg" style="margin-bottom:0.625rem">
+      <button type="button" data-live="cam" aria-pressed="${mode === 'cam'}">監視器</button>
+      <button type="button" data-live="wy" aria-pressed="${mode === 'wy'}">Windy 風雨圖</button></div>`;
+    const bindSeg = () => box.querySelector('#liveSeg').addEventListener('click', e => {
+      const b = e.target.closest('button[data-live]'); if (!b || b.dataset.live === liveMode()) return;
+      try { localStorage.setItem(LIVE_KEY, b.dataset.live); } catch (err) {}
+      _windySrc = '';
+      renderWindy();
+    });
+    if (mode === 'cam') {
+      box.innerHTML = seg + '<div id="camBox"></div>';
+      bindSeg(); renderCams();
+      return;
+    }
     const c = windyCenter();
     const full = `https://www.windy.com/${c.lat.toFixed(3)}/${c.lng.toFixed(3)}?${windyOv},${c.lat.toFixed(3)},${c.lng.toFixed(3)},${c.zoom || 6}`;
     // 沒有颱風就不顯示對焦切換 —— 切過去也只會是一片空海
@@ -12305,7 +12465,7 @@ window.checkUpdate = checkUpdate; window.fetchDgpa = fetchDgpa;
     /* 圖層與對焦各一個下拉、排成一列（以前是兩排按鈕,佔掉地圖上方一大塊） */
     const sel = (id, lb, opts, cur) => `<label class="wy-sel"><span>${lb}</span><select id="${id}">${
       opts.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>`;
-    box.innerHTML =
+    box.innerHTML = seg +
       '<div class="sec"><h2>即時影像 Windy</h2></div>' +
       `<div class="wy-bar">${sel('wyOv', '圖層', WINDY_OV, windyOv)}${
         canTy ? sel('wyFo', '對焦', [['station', '站臺'], ['typhoon', '颱風']], windyFocus) : ''}</div>` +
@@ -12317,6 +12477,7 @@ window.checkUpdate = checkUpdate; window.fetchDgpa = fetchDgpa;
       '<p class="hint" style="margin-top:0.5rem">Windy 是實際觀測與模式繪圖（需連網）；NCDR 可比對各國預報路徑與衛星雲圖。' +
       '風哨的待機、復機時間是本機推估，兩者分開看。</p>';
 
+    bindSeg();
     mountWindyFrame();
     box.querySelector('#wyOv').addEventListener('change', e => {
       windyOv = e.target.value;

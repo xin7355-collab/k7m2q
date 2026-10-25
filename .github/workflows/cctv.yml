@@ -1,0 +1,63 @@
+# 道路監視器清單（交通部 TDX：國道、省道、各縣市）→ data/cctv.json，給「戰情 › 路徑 › 即時影像 › 監視器」地圖。
+# 清單一週才變幾支，不放進每 10 分鐘的氣象管線。不帶金鑰每個 IP 每天 20 次、全部要 24 次，
+# 所以每輪抓最久沒更新的 18 份、遇到額度用完就停，下一輪接著抓（scripts/fetch_cctv.py）。
+name: Fetch CCTV list
+
+on:
+  schedule:
+    - cron: "41 18 * * 1,4"     # 每週二、五 02:41（臺灣時間）；避開整點
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write   # 推完要自己叫 Pages 部署（GITHUB_TOKEN 推的 commit 不會觸發 pages.yml）
+
+concurrency:
+  group: cctv
+  cancel-in-progress: true
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4 # guardrails: ignore
+        with:
+          ref: claude/feng-shao-lgn3wn
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Selftest
+        run: python scripts/fetch_cctv.py selftest
+
+      - name: Fetch
+        run: python scripts/fetch_cctv.py
+
+      - name: Commit if changed
+        id: commit
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$(git status --porcelain -- data/cctv.json)" ]; then
+            echo "no change"
+            exit 0
+          fi
+          git add data/cctv.json
+          git commit -m "data $(date -u -d '+8 hours' '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3 4; do
+            if git pull --rebase --quiet origin claude/feng-shao-lgn3wn && git push; then
+              echo "pushed=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep $((2 ** i))
+          done
+          exit 1
+
+      - name: Deploy Pages
+        if: always() && steps.commit.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref claude/feng-shao-lgn3wn
