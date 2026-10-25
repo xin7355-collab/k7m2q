@@ -199,6 +199,7 @@ async function bootWith(page, stations, extra = {}) {
   await page.route('**/data/ens.json', r => extra.ens ? r.fulfill({ json: extra.ens }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/ecens.json', r => extra.ecens ? r.fulfill({ json: extra.ecens }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/cctv.json', r => extra.cctv ? r.fulfill({ json: extra.cctv }) : r.fulfill({ status: 404, body: '' }));
+  await page.route('**/data/wfu.json', r => extra.wfu ? r.fulfill({ json: extra.wfu }) : r.fulfill({ status: 404, body: '' }));
   await page.addInitScript(([sts, ex]) => {
     if (window.top !== window) return;
     if (localStorage.getItem('galepost.v2')) return;
@@ -2024,8 +2025,8 @@ test('Windy 即時影像搬到路徑頁「對焦站臺」右邊的分頁；天�
   await page.locator('#tySeg button[data-ty="map"]').click();
   await expect(page.locator('#mapFocus button')).toHaveText(['全域', '對焦站臺', '即時影像']);
   await page.locator('#mapFocus button[data-mf="wy"]').click();
-  // v90 起即時影像預設是監視器地圖，Windy 在旁邊的分頁
-  await expect(page.locator('#liveSeg button')).toHaveText(['監視器', 'Windy 風雨圖']);
+  // v90 起即時影像預設是監視器地圖，Windy 在旁邊的分頁（v93 中間多了景點海象）
+  await expect(page.locator('#liveSeg button')).toHaveText(['監視器', '景點海象', 'Windy 風雨圖']);
   await page.locator('#liveSeg button[data-live="wy"]').click();
   await expect(page.locator('#tyWindy')).toContainText('即時影像 Windy');
   await expect(page.locator('#tyWindy iframe')).toHaveCount(1);
@@ -2811,5 +2812,139 @@ test('即時影像 › 監視器：清單還沒產生時講原因，站臺附近
   await page.locator('#mapFocus button[data-mf="wy"]').click();
   await expect(page.locator('#camBox .msg.w')).toContainText('監視器清單讀不到');
   await expect(page.locator('#camBox a', { hasText: '基隆測試站 附近' })).toHaveAttribute('href', /tw\.live\/nearby\//);
+  expect(errors).toEqual([]);
+});
+
+/* ── v93：監視器地圖兩指放大、全螢幕；景點海象（WFU）（使用者 10/26）── */
+async function pinch(page, cdp, cx, cy, d0, d1) {
+  const pts = d => [{ x: cx - d, y: cy, id: 1 }, { x: cx + d, y: cy, id: 2 }];
+  let peek = false;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pts(d0) });
+  for (let i = 1; i <= 12; i++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pts(d0 + (d1 - d0) * i / 12) });
+    await page.waitForTimeout(16);
+    if (await page.evaluate(() => !!document.querySelector('main').style.transform)) peek = true;
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(500);
+  return peek;
+}
+
+test('監視器地圖（v93）：兩指撐開是放大地圖，不會被「整頁暫時放大」搶走；全螢幕鈕撐滿畫面、點監視器的視窗蓋在上面', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: CCTV });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camMap')).toBeVisible();
+  const box = await page.locator('#camMap').boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  const z0 = await page.evaluate(() => CAMMAP.getZoom());
+  expect(await pinch(page, cdp, cx, cy, 30, 140)).toBe(false);                  // 頁面沒有被放大
+  const z1 = await page.evaluate(() => CAMMAP.getZoom());
+  expect(z1).toBeGreaterThan(z0);                                                 // 地圖放大了
+  expect(await pinch(page, cdp, cx, cy, 140, 30)).toBe(false);
+  expect(await page.evaluate(() => CAMMAP.getZoom())).toBeLessThan(z1);
+  // 全螢幕
+  await page.locator('#camFull').click();
+  await expect(page.locator('#camMap')).toHaveClass(/full/);
+  const vp = page.viewportSize(), fb = await page.locator('#camMap').boundingBox();
+  expect([Math.round(fb.x), Math.round(fb.y), Math.round(fb.width), Math.round(fb.height)]).toEqual([0, 0, vp.width, vp.height]);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+  await page.evaluate(() => openCam(0));
+  await expect(page.locator('#sheet')).toBeVisible();
+  // 視窗在全螢幕地圖之上：畫面中央下方點到的是視窗，不是地圖
+  expect(await page.evaluate(([w, h]) => !!document.elementFromPoint(w / 2, h - 60).closest('#sheet'), [vp.width, vp.height])).toBe(true);
+  await page.locator('#shClose').click();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden');  // 地圖還在全螢幕
+  await page.locator('#camFull').click();
+  await expect(page.locator('#camMap')).not.toHaveClass(/full/);
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('');
+  expect(errors).toEqual([]);
+});
+
+test('監視器畫面（v93）：「全螢幕」把畫面撐滿整個視窗，右上角 ✕ 離開', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull(), cctv: CCTV });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await expect(page.locator('#camMap')).toBeVisible();
+  await page.evaluate(() => openCam(0));
+  await page.locator('#camFs').click();
+  await expect(page.locator('#shBody .cam-view')).toHaveClass(/full/);
+  const vp = page.viewportSize(), fb = await page.locator('#shBody .cam-view').boundingBox();
+  expect([Math.round(fb.width), Math.round(fb.height)]).toEqual([vp.width, vp.height]);
+  await page.locator('#shBody .cam-x').click();
+  await expect(page.locator('#shBody .cam-view')).not.toHaveClass(/full/);
+  expect(errors).toEqual([]);
+});
+
+const WFU_FILE = { v: 1, src: 'WFU', updated: '2026-10-26T05:17:00+08:00', total: 6,
+  cite: '清單整理：WFU「台灣景點人潮即時影像」（monitor1.wfuapp.com）。畫面版權屬各影像提供者。',
+  items: [
+    ['基隆海洋廣場', '基隆', 'y', 'abcdefghijk', 'https://monitor1.wfuapp.com/2024/01/a.html', ['港口', '颱風海象']],
+    ['基隆八斗子', '基隆', 'x', 'noembed0000', 'https://monitor1.wfuapp.com/2024/01/b.html', ['颱風海象']],
+    ['台北大巨蛋', '台北', 'i', 'https://cctv.bote.gov.taipei:8502/jpg/382', 'https://monitor1.wfuapp.com/2024/01/c.html', ['地標']],
+    ['台中大里塗城', '台中', 'c', 'UCE8omMvpPxleZ42Mk2MHQhQ', 'https://monitor1.wfuapp.com/2024/01/d.html', ['路況']],
+    ['花蓮馬太鞍溪橋', '花蓮', 'i', 'https://fmg.wra.gov.tw/singlefmg/new/7703/newbig.jpg', 'https://monitor1.wfuapp.com/2024/01/e.html', ['橋樑', '颱風海象']],
+    ['怪資料', '台東', 'y', '"><script>', 'javascript:alert(1)', ['颱風海象']]] };
+
+test('即時影像 › 景點海象（v93）：預設列颱風海象、站臺所在縣市排最前；YouTube 在 App 裡播、禁止嵌入的外連、截圖輪播；關掉就停', async ({ page }) => {
+  const st = [{ ...KEEL, county: '基隆市' }];
+  const errors = await bootWith(page, st, { ty: typhoonFileFull(), cctv: CCTV, wfu: WFU_FILE });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await page.locator('#liveSeg button[data-live="wfu"]').click();
+  await expect(page.locator('#wfuList')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('galepost.ui.live'))).toBe('wfu');
+  await expect(page.locator('#wfuTag')).toHaveValue('颱風海象');
+  // 颱風海象：基隆（站臺所在）在最前，台北大巨蛋（地標）不列
+  const heads = await page.locator('#wfuList .stn').allTextContents();
+  expect(heads[0]).toContain('基隆');
+  expect(heads[0]).toContain('站臺所在');
+  await expect(page.locator('#wfuList')).not.toContainText('台北大巨蛋');
+  await expect(page.locator('#wfuBox .ai-cite')).toContainText('清單整理：WFU');
+  // YouTube：官方嵌入、靜音自動播、iPhone 不跳出全螢幕
+  await page.locator('#wfuList .cam-chip', { hasText: '海洋廣場' }).click();
+  await expect(page.locator('#shTitle')).toHaveText('基隆海洋廣場');
+  const src = await page.locator('#camYt').getAttribute('src');
+  expect(src).toBe('https://www.youtube-nocookie.com/embed/abcdefghijk?autoplay=1&mute=1&playsinline=1&rel=0');
+  expect(await page.locator('#camYt').getAttribute('referrerpolicy')).toBe('strict-origin-when-cross-origin');
+  await expect(page.locator('#shBody a', { hasText: 'WFU 原文' })).toHaveAttribute('href', 'https://monitor1.wfuapp.com/2024/01/a.html');
+  await expect(page.locator('#shBody a', { hasText: '附近影像' })).toHaveCount(0);            // 沒有座標就不給
+  await page.locator('#shClose').click();
+  expect(await page.locator('#camYt').getAttribute('src')).toBe('about:blank');             // 關掉就停播
+  // 禁止嵌入：直接大按鈕到 YouTube
+  await page.locator('#wfuList .cam-chip', { hasText: '八斗子' }).click();
+  await expect(page.locator('#camWait a.btn.pri')).toHaveAttribute('href', 'https://www.youtube.com/watch?v=noembed0000');
+  await page.locator('#shClose').click();
+  // 換分類到全部、縣市選台北：截圖每 10 秒換一張
+  await page.locator('#wfuTag').selectOption('');
+  await page.locator('#wfuCty').selectOption('台北');
+  await expect(page.locator('#wfuList .cam-chip')).toHaveCount(1);
+  const reqs = [];
+  page.on('request', q => { if (/bote\.gov\.taipei/.test(q.url())) reqs.push(q.url()); });
+  await page.locator('#wfuList .cam-chip', { hasText: '大巨蛋' }).click();
+  await expect(page.locator('#shBody')).toContainText('每 10 秒更新一張');
+  await expect.poll(() => reqs[0]).toMatch(/^https:\/\/cctv\.bote\.gov\.taipei:8502\/jpg\/382\?_t=\d+$/);
+  await page.locator('#shClose').click();
+  // 頻道直播：用頻道的 live_stream 嵌入
+  await page.locator('#wfuCty').selectOption('台中');
+  await page.locator('#wfuList .cam-chip').first().click();
+  expect(await page.locator('#camYt').getAttribute('src')).toBe('https://www.youtube.com/embed/live_stream?channel=UCE8omMvpPxleZ42Mk2MHQhQ&autoplay=1&mute=1&playsinline=1');
+  await page.locator('#shClose').click();
+  // 格式不對的資料點了不開，也不會把奇怪的字串塞進網址
+  await page.locator('#wfuCty').selectOption('台東');
+  await page.locator('#wfuList .cam-chip').first().click();
+  await expect(page.locator('#sheet')).toBeHidden();
+  expect(await page.evaluate(() => localStorage.getItem('galepost.ui.wfutag'))).toBe('');
+  expect(errors).toEqual([]);
+});
+
+test('即時影像 › 景點海象：清單還沒產生時講原因，給原網站連結', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { ty: typhoonFileFull() });
+  await goMap(page);
+  await page.locator('#mapFocus button[data-mf="wy"]').click();
+  await page.locator('#liveSeg button[data-live="wfu"]').click();
+  await expect(page.locator('#wfuBox .msg.w')).toContainText('景點海象清單讀不到');
+  await expect(page.locator('#wfuBox a', { hasText: 'WFU 颱風海象' })).toHaveAttribute('href', /monitor1\.wfuapp\.com/);
   expect(errors).toEqual([]);
 });

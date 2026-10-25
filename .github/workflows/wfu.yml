@@ -1,0 +1,63 @@
+# 景點、港口、海象即時影像清單（WFU 部落格整理）→ data/wfu.json，給「即時影像 › 景點海象」。
+# YouTube 直播的影片 ID 會因為重開直播而換掉，部落格作者會跟著改，所以每天抓一次（scripts/fetch_wfu.py）。
+name: Fetch live-view list
+
+on:
+  schedule:
+    - cron: "17 21 * * *"       # 每天 05:17（臺灣時間）；避開整點
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write   # 推完要自己叫 Pages 部署（GITHUB_TOKEN 推的 commit 不會觸發 pages.yml）
+
+concurrency:
+  group: wfu
+  cancel-in-progress: true
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    # 摘要 8 頁約 5 秒＋YouTube oEmbed 驗證 360 多支（一秒五支，預算 5 分鐘，超過的先照收）
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4 # guardrails: ignore
+        with:
+          ref: claude/feng-shao-lgn3wn
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Selftest
+        run: python scripts/fetch_wfu.py selftest
+
+      - name: Fetch
+        run: python scripts/fetch_wfu.py
+
+      - name: Commit if changed
+        id: commit
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$(git status --porcelain -- data/wfu.json)" ]; then
+            echo "no change"
+            exit 0
+          fi
+          git add data/wfu.json
+          git commit -m "data $(date -u -d '+8 hours' '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3 4; do
+            if git pull --rebase --quiet origin claude/feng-shao-lgn3wn && git push; then
+              echo "pushed=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep $((2 ** i))
+          done
+          exit 1
+
+      - name: Deploy Pages
+        if: always() && steps.commit.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref claude/feng-shao-lgn3wn

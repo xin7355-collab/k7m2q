@@ -9,7 +9,7 @@
  * 這裡刻意不做 retry:Service Worker 只是轉手,重試由頁面端的 getJSON 負責
  * （429／5xx 退避）。兩層都重試的話,一次失敗會被放大成好幾倍的請求。
  */
-const CACHE = 'galepost-v92';
+const CACHE = 'galepost-v93';
 const SHELL = [
   './',
   './index.html',
@@ -85,9 +85,10 @@ self.addEventListener('fetch', e => {
      所以就算讀到快取,「幾分鐘前」仍然是誠實的。
      停班停課的後端檔也是:走下面「快取優先」的話,按「更新」拿到的永遠是上一份,
      使用者看到的就是「更新壞掉了」。畫面上標的是檔案裡的抓取時間,讀到快取也看得出多舊。
-     AI 系集（ens）也一樣：畫面標的是起報時間與「已 N 小時」。 */
+     AI 系集（ens）也一樣：畫面標的是起報時間與「已 N 小時」。
+     景點海象清單（wfu）：YouTube 直播重開就換影片 ID，拿舊清單點下去會是「影片無法播放」。 */
   if (url.origin === location.origin
-      && /\/data\/(typhoon|lightning|dgpa|wx|ens|ecens)\.json$/.test(url.pathname)) {
+      && /\/data\/(typhoon|lightning|dgpa|wx|ens|ecens|wfu)\.json$/.test(url.pathname)) {
     e.respondWith(
       fetch(req)
         .then(res => {

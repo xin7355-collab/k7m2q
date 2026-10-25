@@ -76,7 +76,9 @@
   `scripts/fetch_ens.py`（同一個 cwa.yml，Weather Lab 的 AI 系集颱風路徑換算成臺灣周邊 8／10 級風機率格網 `data/ens.json`；
   即時資料條款不准公開轉存原始路徑——只放推不回原始資料的推算結果，畫面要顯示 Weather Lab 與條款指定的 © 聲明；不進待機建議）、
   `scripts/fetch_cctv.py` + `.github/workflows/cctv.yml`（每週二、五從交通部 TDX 抓國道／省道／各縣市監視器清單 `data/cctv.json`，
-  給「即時影像 › 監視器」地圖；不帶金鑰每 IP 每天 20 次，分批輪抓。畫面直連原機關：臺中播放頁由後端解析成 MJPEG 直連、Safari 解不開的 MJPEG 前端自己切圖、臺北新北等只有播放頁的直接外連；tw.live 不能內嵌，只做「附近影像」外連）、
+  給「即時影像 › 監視器」地圖；不帶金鑰每 IP 每天 20 次，分批輪抓。畫面直連原機關：臺中播放頁由後端解析成 MJPEG 直連；基隆、臺東這家 Safari 解不開的 MJPEG 改抓同主機 /snapshot 輪播；臺北新北等只有播放頁的直接外連；tw.live 不能內嵌，只做「附近影像」外連）、
+  `scripts/fetch_wfu.py` + `.github/workflows/wfu.yml`（每天把 WFU「台灣景點人潮即時影像」部落格的公開摘要整理成 `data/wfu.json`，
+  給「即時影像 › 景點海象」：YouTube 官方嵌入／政府截圖輪播；沒有座標所以照縣市分組；畫面標「清單整理：WFU」並連回原文）、
   `scripts/build_tyhist.py` + `.github/workflows/tyhist.yml`（每週從 IBTrACS 建 `data/tyhist.json`，名牌的「今年／歷史第幾強」）、
   `assets/coast.json`（戰情圖離線海岸線，`python3 scripts/build_coast.py build` 重產）、
   `e2e/`（Playwright 測試，`npm test`）。每輪做了什麼寫在 commit 內文（`git log`），不另放紀錄檔。
