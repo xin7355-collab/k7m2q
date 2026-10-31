@@ -27,7 +27,10 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # 釘 24.04：2026-10 起 ubuntu-latest 換成 26.04，Playwright 1.56.1 不支援
+    # （「Playwright does not support chromium on ubuntu26.04-x64」，裝瀏覽器那步就失敗）。
+    # 之後升 Playwright 到支援 26.04 的版本再改回 latest。
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
