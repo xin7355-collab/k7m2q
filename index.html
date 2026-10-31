@@ -2106,7 +2106,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v96';
+const APP_VER = 'v97';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -9629,7 +9629,8 @@ function hzTopBar() {
 const hzEqLine = e => `${e.where || e.loc} 規模 ${e.mag.toFixed(1)}${e.max >= 1 ? `，最大震度 ${INT_TXT[e.max]}` : ''}`;
 const hzInt = (lv, sm) => lv >= 0 ? `<span class="hz-int${sm ? ' sm' : ''}" style="--c:${INT_COL[lv]};--tc:${intFg(lv)}">${INT_TXT[lv]}</span>`
   : `<span class="hz-int na${sm ? ' sm' : ''}">無震度</span>`;
-const hzAgo = t => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? '剛剛' : m < 60 ? `${m} 分鐘前` : m < 1440 ? `${Math.round(m / 60)} 小時前` : fmtShort(t); };
+// 一天以上不寫：前面已經有日期時間，再寫一次日期是重複（v96 真實資料畫面上看到）
+const hzAgo = t => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? '剛剛' : m < 60 ? `${m} 分鐘前` : m < 1440 ? `${Math.round(m / 60)} 小時前` : ''; };
 function hzEqList() { return HZ_EQ.filter(e => HZ_EQF === 'all' || e.src === 'cwa' || HZ_TWBOX(e)); }
 // 我的站臺：最近的氣象署測站實測（25 km 內）、所在縣市的最大震度、S 波大概幾秒後到（推估）
 function hzMine(e) {
@@ -9660,7 +9661,7 @@ function hzEqView() {
   const d = new Date(e.t);
   return `<div class="card pad hz-card">
       <div class="hz-h"><b class="hz-m">M${e.mag.toFixed(1)}</b><div class="hz-w"><b>${esc(e.where || e.loc)}</b>
-        <small>${fmtShort(e.t)}:${p2(d.getSeconds())}・深 ${e.depth.toFixed(e.depth < 10 ? 1 : 0)} km・${hzAgo(e.t)}</small></div>${hzInt(e.max)}</div>
+        <small>${[`${fmtShort(e.t)}:${p2(d.getSeconds())}`, `深 ${e.depth.toFixed(e.depth < 10 ? 1 : 0)} km`, hzAgo(e.t)].filter(Boolean).join('・')}</small></div>${hzInt(e.max)}</div>
       ${e.src === 'cwa' ? `<p class="hz-loc">${esc(e.loc)}　<small>${e.small ? '小區域有感地震' : `第 ${esc(e.no)} 號`}・中央氣象署</small></p>`
         : `<p class="msg w" style="margin:0.5rem 0 0">美國地質調查所（USGS）的速報：規模算法跟氣象署不同、沒有臺灣各地震度。${HZ_TWBOX(e) ? '氣象署報告出來後會換成官方資料。' : ''}</p>`}
       ${e.areas.length ? `<div class="hz-areas">${e.areas.map(a => `<span class="hz-ar" style="--c:${INT_COL[a.lv]};--tc:${intFg(a.lv)}">${esc(a.c)}<b>${INT_TXT[a.lv]}</b></span>`).join('')}</div>` : ''}

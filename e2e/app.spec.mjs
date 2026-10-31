@@ -3266,6 +3266,8 @@ test('示警・地震（v96）：官方規模與各縣市震度、我的站臺�
   await page.locator('#hzBody .hz-row', { hasText: 'M4.5' }).click();
   await expect(card).toContainText('M4.5');
   await expect(card).toContainText('小區域有感地震');
+  await expect(card.locator('.hz-w small')).not.toContainText('前');            // 三天前的：日期已經寫了，不再補「N 天前」或重複日期
+  expect((await card.locator('.hz-w small').textContent()).match(/\d+\/\d+\(/g)).toHaveLength(1);
   await expect(page.locator('#hzMap .hz-st')).toHaveCount(1);
   await expect(page.locator('#hzCite')).toContainText('氣象署：後端');
   await expect(page.locator('#hzCite')).toContainText('示意');
