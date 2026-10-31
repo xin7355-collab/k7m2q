@@ -84,7 +84,8 @@
   v2 起靠岸海上補的格子存 -(編號+2)：查詢照算、示警地圖只塗陸地；`python3 scripts/build_region.py build` 重產；
   即時影像打不開的記在本機 3 天 `galepost.camstat`，清單與地圖標紅並寫原因）、
   `scripts/fetch_hazard.py`（同一個 cwa.yml，氣象署地震報告 E-A0015／16、海嘯 E-A0014＋國家災防中心民生示警 CAP 寫 `data/hazard.json`，
-  給底部「示警」頁：前端有個人授權碼就直連氣象署（有 CORS）、USGS 免金鑰直連、示警試轉發服務，抓不到才用後端這份。
+  不另開分頁（使用者 10/31）：戰情總覽摘要卡、戰情 › 路徑 › 示警地圖、站臺卡標籤、播報員即時告警與播報稿、各頁上方提示條。
+  前端有個人授權碼就直連氣象署（有 CORS）、USGS 免金鑰直連、示警試轉發服務，抓不到才用後端這份。
   震度擴散、海嘯波前是示意速度，震度／到達時間／浪高是官方，畫面分開標）、
   `scripts/build_tyhist.py` + `.github/workflows/tyhist.yml`（每週從 IBTrACS 建 `data/tyhist.json`，名牌的「今年／歷史第幾強」）、
   `assets/coast.json`（戰情圖離線海岸線，`python3 scripts/build_coast.py build` 重產）、

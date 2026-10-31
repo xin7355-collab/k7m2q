@@ -2026,7 +2026,7 @@ test('Windy 即時影像搬到路徑頁「對焦站臺」右邊的分頁；天�
   await expect(page.locator('#ty-wx #tyWindy')).toHaveCount(0);
   await expect(page.locator('#ty-wx')).not.toContainText('即時影像 Windy');
   await page.locator('#tySeg button[data-ty="map"]').click();
-  await expect(page.locator('#mapFocus button')).toHaveText(['全域', '對焦站臺', '即時影像']);
+  await expect(page.locator('#mapFocus button')).toHaveText(['全域', '對焦站臺', '示警', '即時影像']);   // v98 示警地圖併進來
   await page.locator('#mapFocus button[data-mf="wy"]').click();
   // v90 起即時影像預設是監視器地圖，Windy 在旁邊的分頁（v93 中間多了景點海象）
   await expect(page.locator('#liveSeg button')).toHaveText(['監視器', '景點海象', 'Windy 風雨圖']);
@@ -3172,9 +3172,12 @@ function hazardFile(o = {}) {
 }
 const usgsF = (id, t, lat, lng, mag, place) => ({ type: 'Feature', id, properties: { mag, place, time: t, url: 'https://earthquake.usgs.gov/' + id, tsunami: 0, type: 'earthquake', magType: 'mww' },
   geometry: { type: 'Point', coordinates: [lng, lat, 20] } });
+// v98 起示警不是獨立分頁：在「戰情 › 路徑」的「示警」地圖
 async function goHz(page) {
-  await page.locator('.nav button[data-p="hz"]').click();
-  await expect(page.locator('#p-hz')).toHaveClass(/on/);
+  await page.locator('.nav button[data-p="ty"]').click();
+  await page.locator('#tySeg button[data-ty="map"]').click();
+  await page.locator('#mapFocus button[data-mf="hz"]').click();
+  await expect(page.locator('#tyHz')).toBeVisible();
 }
 
 test('示警解析（v96）：震度字串、CAP 的上午下午時間、示警文字找鄉鎮、海嘯分區對海岸鄉鎮、經度太平洋置中', async ({ page }) => {
@@ -3276,13 +3279,14 @@ test('示警・地震（v96）：官方規模與各縣市震度、我的站臺�
 
 test('示警・海嘯（v96）：生效中的警報置頂、沿海分區依到達時間排、倒數、潮位站實測；海岸上色；別頁上方提示條與導覽紅點', async ({ page }) => {
   const errors = await bootWith(page, [KEEL], { hazard: hazardFile({ eq: [hzQuakeB()] }) });
-  // 還沒打開示警頁：導覽紅點、各頁上方的提示條（海嘯警報）
+  await toEq(page);                                    // 有颱風時 App 會自動帶到戰情總覽（那裡看得到）；先到站臺頁
+  // 在別頁：戰情的紅點、各頁上方的提示條（海嘯警報）
   await expect(page.locator('#navDotHz')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#hzTop')).toBeVisible();
   await expect(page.locator('#hzTop')).toContainText('海嘯警報');
   await expect(page.locator('#hzTop')).toContainText('堪察加');
   await page.locator('#hzTop').click();
-  await expect(page.locator('#p-hz')).toHaveClass(/on/);
+  await expect(page.locator('#tyHz')).toBeVisible();                 // 到「戰情 › 路徑 › 示警」
   await expect(page.locator('#hzSeg button[data-hz="tsu"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#navDotHz')).toBeHidden();
   await expect(page.locator('#hzTop')).toBeHidden();
@@ -3410,5 +3414,90 @@ test('示警・沒資料（v96）：後端還沒產生、外部全擋：不報�
   await page.locator('#hzSeg button[data-hz="cap"]').click();
   await expect(page.locator('#hzBody')).toContainText('示警清單還沒拿到');
   await expect(page.locator('#navDotHz')).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+
+test('示警併進各頁（v98）：沒有獨立分頁；總覽摘要卡（有要注意的放最上面）、點了到路徑的示警地圖；看過紅點就消失', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { hazard: hazardFile() });
+  await toEq(page);
+  await expect(page.locator('.nav button')).toHaveCount(5);
+  await expect(page.locator('.nav button[data-p="hz"]')).toHaveCount(0);
+  await expect(page.locator('#navDotHz')).toBeVisible({ timeout: 15000 });           // 紅點在「戰情」上
+  await expect(page.locator('.nav button[data-p="ty"] #navDotHz')).toHaveCount(1);
+  await page.locator('.nav button[data-p="ty"]').click();
+  const card = page.locator('#hzSumTop .hz-sum.hot');                                  // 有生效的海嘯、有感地震：放最上面
+  await expect(card).toBeVisible();
+  await expect(page.locator('#hzSum')).toBeEmpty();
+  await expect(page.locator('#navDotHz')).toBeHidden();                                // 看到總覽就算看過
+  await expect(page.locator('#hzTop')).toBeHidden();                                   // 總覽上已經寫了，上方提示條不重複
+  const rows = card.locator('.hz-sr');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText('地震 M6.1');
+  await expect(rows.nth(0)).toContainText('站臺最大 基隆測試站 3級（實測）');
+  await expect(rows.nth(1)).toContainText('海嘯警報 第 2 報');
+  await expect(rows.nth(1)).toContainText('到東部沿海地區');
+  await expect(rows.nth(2)).toContainText('生效 4 則');
+  await expect(rows.nth(2)).toContainText('影響站臺 1 則');
+  // 點地震那行：到路徑的示警地圖、地震那段
+  await rows.nth(0).click();
+  await expect(page.locator('#tySeg button[data-ty="map"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#mapFocus button[data-mf="hz"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#mapWrap')).toBeHidden();                                 // 颱風地圖讓位
+  await expect(page.locator('#hzBody .hz-card')).toContainText('M6.1');
+  // 點示警那行：直接篩「影響我的站臺」
+  await page.locator('#tySeg button[data-ty="now"]').click();
+  await page.locator('#hzSumTop .hz-sr').nth(2).click();
+  await expect(page.locator('#hzSeg button[data-hz="cap"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#hzCapF')).toHaveValue('mine');
+  await expect(page.locator('#hzBody .hz-cap')).toHaveCount(1);
+  // 切回全域：颱風地圖回來、示警地圖收起來、動畫停
+  await page.locator('#mapFocus button[data-mf="all"]').click();
+  await expect(page.locator('#tyHz')).toBeHidden();
+  expect(await page.evaluate(() => HZ_AN)).toBeNull();
+  // 平常（沒有要注意的）：摘要卡放總覽最後
+  await page.evaluate(() => { HZ_RAW.fileEq = [HZ_RAW.fileEq[1]]; HZ_RAW.liveEq = []; HZ_RAW.fileTsu = []; HZ_RAW.liveTsu = []; HZ_RAW.fileCap = null; HZ_RAW.cap = null; hzRebuild(); });
+  await page.locator('#tySeg button[data-ty="now"]').click();
+  await expect(page.locator('#hzSumTop')).toBeEmpty();
+  await expect(page.locator('#hzSum .hz-sum')).not.toHaveClass(/hot/);
+  await expect(page.locator('#hzSum .hz-sr').nth(1)).toContainText('目前沒有海嘯警報、警訊');
+  expect(errors).toEqual([]);
+});
+
+test('示警併進各頁（v98）：站臺卡標地震（實測／縣市最大）、站臺那段海岸的海嘯、範圍含站臺的示警；點標籤到示警地圖；播報稿即時告警多這幾行', async ({ page }) => {
+  const HL = { id: 'h1', name: '花蓮測試站', type: 't1', status: 'on', hum: null, note: '', lat: 23.99, lng: 121.6 };
+  const TP = { id: 'p1', name: '台北測試站', type: 't1', status: 'on', hum: null, note: '', lat: 25.035, lng: 121.56 };
+  const errors = await bootWith(page, [KEEL, HL, TP], { ty: typhoonFileFull(), hazard: hazardFile() });
+  await toEq(page);
+  const keel = page.locator('.st[data-id="k1"]'), hl = page.locator('.st[data-id="h1"]'), tp = page.locator('.st[data-id="p1"]');
+  await expect(keel.locator('.hz-tag', { hasText: '地震' })).toHaveText('地震 3級（實測）', { timeout: 15000 });
+  await expect(keel.locator('.hz-tag', { hasText: '海嘯' })).toContainText('海嘯警報');
+  await expect(keel.locator('.hz-tag', { hasText: '海嘯' })).toContainText('小於0.3公尺');        // 北部沿海
+  await expect(keel.locator('.hz-tag', { hasText: '土石流' })).toHaveCount(1);
+  await expect(hl.locator('.hz-tag', { hasText: '地震' })).toHaveText('地震 5弱（實測）');
+  await expect(hl.locator('.hz-tag', { hasText: '海嘯' })).toContainText('0.3至1公尺');           // 東部沿海
+  await expect(tp.locator('.hz-tag', { hasText: '地震' })).toHaveText('地震 3級（實測）');
+  await expect(tp.locator('.hz-tag', { hasText: '海嘯' })).toHaveCount(0);                     // 台北市沒有海岸
+  await expect(tp.locator('.hz-tag', { hasText: '土石流' })).toHaveCount(0);
+  // 播報稿：即時告警裡有海嘯（站臺所在分區）、地震（站臺實測）、示警（範圍內站臺）
+  await page.locator('.nav button[data-p="ty"]').click();
+  await page.locator('#tySeg button[data-ty="brief"]').click();
+  // 上面的「即時告警」卡也有（不能一邊寫「目前沒有」、一邊播報稿在講海嘯）
+  const al = page.locator('#tyAlert .al-card');
+  await expect(al.locator('.al-h b')).toHaveText('即時告警');
+  await expect(al.locator('.al-r[data-hzgo="tsu"]')).toContainText('海嘯警報');
+  await expect(al.locator('.al-r[data-hzgo="eq"]')).toContainText('花蓮測試站 5弱');
+  await expect(al.locator('.al-r[data-hzgo="cap"]')).toContainText('範圍內站臺：基隆測試站');
+  const brief = page.locator('#briefTxt');
+  await expect(brief).toContainText('海嘯警報（第2報）：俄羅斯 堪察加半島東部外海 規模 8.7');
+  await expect(brief).toContainText('基隆測試站（北部沿海地區');
+  await expect(brief).toContainText('花蓮縣近海 規模 6.1，最大震度 5弱；站臺');
+  await expect(brief).toContainText('花蓮測試站 5弱');
+  await expect(brief).toContainText('土石流（農業部農村發展及水土保持署）：基隆市發布土石流黃色警戒，請注意。；範圍內站臺 基隆測試站');
+  // 站臺卡的標籤點了到示警地圖對應那段
+  await toEq(page);
+  await hl.locator('.hz-tag', { hasText: '海嘯' }).click();
+  await expect(page.locator('#tyHz')).toBeVisible();
+  await expect(page.locator('#hzSeg button[data-hz="tsu"]')).toHaveAttribute('aria-pressed', 'true');
   expect(errors).toEqual([]);
 });

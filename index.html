@@ -100,7 +100,7 @@ main{max-width:56.25rem;margin:0 auto;padding:calc(env(safe-area-inset-top) + 0.
   position:fixed;left:0;right:0;bottom:0;z-index:40;
   background:rgba(5,12,18,.96);backdrop-filter:blur(1rem);-webkit-backdrop-filter:blur(1rem);
   border-top:1px solid rgba(111,211,255,.22);padding-bottom:env(safe-area-inset-bottom);
-  display:grid;grid-template-columns:repeat(6,1fr);
+  display:grid;grid-template-columns:repeat(5,1fr);
 }
 .nav button{padding:0.5625rem 0 0.5rem;display:flex;flex-direction:column;align-items:center;gap:0.1875rem;
   color:var(--fg4);position:relative}
@@ -756,6 +756,21 @@ details.more>.hint{margin-top:0.25rem}
 .hz-top b{color:#fff}
 .hz-top .act{margin-left:auto;color:var(--acc);font-weight:600}
 .hz-top[hidden]{display:none}
+/* 戰情 › 總覽 的摘要卡：三行（地震、海嘯、各機關），點了到示警地圖 */
+.hz-sum{margin:0 0 0.75rem;padding-top:0.5rem;padding-bottom:0.25rem}
+.hz-sum.hot{border-color:rgba(255,82,71,.5);box-shadow:inset 3px 0 0 var(--no)}
+.hz-sum-h{display:flex;align-items:baseline;gap:0.5rem;flex-wrap:wrap;padding:0.25rem 0 0.375rem;border-bottom:1px solid var(--edge)}
+.hz-sum-h b{font-size:0.875rem}
+.hz-sum-h small{font:0.6875rem var(--mono);color:var(--fg4);margin-left:auto}
+.hz-sr{display:flex;align-items:center;gap:0.625rem;width:100%;min-height:3rem;padding:0.4375rem 0;border-bottom:1px solid var(--edge);text-align:left}
+.hz-sr:last-child{border-bottom:0}
+.hz-sr .hz-rt{flex:1 1 auto}
+.hz-sr .hz-rt small{white-space:normal}
+.hz-go{font-style:normal;color:var(--acc);font-size:1.125rem;flex:none}
+.hz-hot{color:#FF8A82}
+/* 站臺卡的地震、海嘯、示警標籤：跟雨、雷的標籤同一列，顏色＝震度／燈號／類別 */
+.al-r[data-hzgo]{cursor:pointer}
+.hz-tag{color:var(--c);white-space:nowrap;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.25);text-underline-offset:2px}
 
 .cam-view{position:relative;background:#000;border-radius:var(--r);overflow:hidden;min-height:12rem;display:flex;align-items:center;justify-content:center}
 .cam-view img{display:block;width:100%;height:auto}
@@ -805,6 +820,8 @@ body.cam-full .sheet{z-index:1300}
 .scrub2 .scrub-t{font-size:0.75rem;color:var(--acc);white-space:nowrap}
 #ty-map.wy #mapWrap,#ty-map.wy #tyTl,#ty-map.wy #tyFc{display:none!important}
 #ty-map:not(.wy) #tyWindy{display:none}
+#ty-map.hz #mapWrap,#ty-map.hz #tyTl,#ty-map.hz #tyFc,#ty-map.hz #tyEc{display:none!important}
+#ty-map:not(.hz) #tyHz{display:none}
 .out-rs{list-style:none;margin:0 0 0.5rem;padding:0;display:flex;flex-direction:column;gap:0.375rem}
 .out-rs li{display:flex;gap:0.5rem;align-items:flex-start;font-size:0.875rem;line-height:1.55;color:var(--fg2)}
 .out-rs em{flex:0 0 auto;font:600 0.625rem/1.7 var(--mono);font-style:normal;padding:0 0.375rem;margin-top:0.125rem;
@@ -1423,7 +1440,7 @@ body.cam-full .sheet{z-index:1300}
 <!-- 頂欄拿掉了：Logo、時鐘、設定鈕、會動的風級條都刪掉,畫面讓給內容。時鐘移到底部導覽上緣,設定在導覽最右邊。 -->
 
 <main>
-<!-- 生效中的海嘯警訊／警報、站臺縣市 4 級以上的地震：每一頁上方都看得到，點了到示警頁 -->
+<!-- 生效中的海嘯警訊／警報、站臺縣市 4 級以上的地震：每一頁上方都看得到，點了到「戰情 › 路徑 › 示警」 -->
 <button type="button" class="hz-top" id="hzTop" hidden></button>
 
 <!-- ══════════ 颱風 ══════════ -->
@@ -1442,11 +1459,14 @@ body.cam-full .sheet{z-index:1300}
     <button type="button" data-ty="wx" aria-pressed="false">天氣</button>
   </div>
   <div class="typane on" id="ty-now">
+    <!-- 地震、海嘯、各機關示警的摘要（v98 從獨立分頁併進來）：有要注意的放最上面，平常放最後 -->
+    <div id="hzSumTop"></div>
     <!-- 官方警報（第幾報、發布時間、警戒區）併在名牌裡；警報時機推估、應變會議併進時間軸——
          以前同一件事在總覽講四次（警報卡、發布時間卡、應變會議卡、時機預判卡）。 -->
     <div id="tyBody"></div>
     <!-- 事件時間軸放最後：前面是「現在要做什麼」,這裡是「整顆颱風的來龍去脈」 -->
     <div id="tyEvt"></div>
+    <div id="hzSum"></div>
   </div>
   <div class="typane" id="ty-brief"><div id="tyAlert"></div><div id="tyBrief"></div></div>
   <!-- 天氣：雷電（逐站落雷）→ 下雨實測與預報、出門建議。
@@ -1456,9 +1476,21 @@ body.cam-full .sheet{z-index:1300}
     <div class="seg" id="mapFocus" style="margin-bottom:0.5rem">
       <button type="button" data-mf="all" aria-pressed="true">全域</button>
       <button type="button" data-mf="tw" aria-pressed="false">對焦站臺</button>
+      <button type="button" data-mf="hz" aria-pressed="false">示警</button>
       <button type="button" data-mf="wy" aria-pressed="false">即時影像</button>
     </div>
     <div id="tyWindy"></div>
+    <!-- 示警地圖（地震、海嘯、各機關示警）：跟「即時影像」一樣是路徑頁的一種地圖，不另開分頁（使用者 10/31） -->
+    <div id="tyHz">
+      <div class="seg" id="hzSeg">
+        <button type="button" data-hz="eq" aria-pressed="true">地震</button>
+        <button type="button" data-hz="tsu" aria-pressed="false">海嘯<i class="hz-n" data-n="tsu" hidden></i></button>
+        <button type="button" data-hz="cap" aria-pressed="false">各機關<i class="hz-n" data-n="cap" hidden></i></button>
+      </div>
+      <div class="cam-map hz-map" id="hzMap"></div>
+      <div id="hzBody"></div>
+      <p class="ai-cite" id="hzCite"></p>
+    </div>
     <div id="mapWrap" style="display:none">
       <div id="map"></div>
       <!-- 全螢幕鈕在地圖建立時搬進右上角的控制列,跟圖層鈕排在一起 -->
@@ -1476,19 +1508,6 @@ body.cam-full .sheet{z-index:1300}
     <!-- 模式系集（ECMWF，非官方）：5 天以後的路徑走向，預設不畫在圖上 -->
     <div id="tyEc"></div>
   </div>
-</section>
-
-<!-- ══════════ 示警 ══════════ -->
-<!-- 地震、海嘯、各機關示警（v96）。地圖固定在這頁、不跟著清單重畫：換一個地震只換圖層，不重建地圖 -->
-<section class="pane" id="p-hz">
-  <div class="seg sub" id="hzSeg">
-    <button type="button" data-hz="eq" aria-pressed="true">地震</button>
-    <button type="button" data-hz="tsu" aria-pressed="false">海嘯<i class="hz-n" data-n="tsu" hidden></i></button>
-    <button type="button" data-hz="cap" aria-pressed="false">示警<i class="hz-n" data-n="cap" hidden></i></button>
-  </div>
-  <div class="cam-map hz-map" id="hzMap"></div>
-  <div id="hzBody"></div>
-  <p class="ai-cite" id="hzCite"></p>
 </section>
 
 <!-- ══════════ 站臺 ══════════ -->
@@ -1583,10 +1602,7 @@ body.cam-full .sheet{z-index:1300}
 <nav class="nav" role="tablist">
   <button role="tab" data-p="ty" aria-selected="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 12c0-3 2.5-5 5.5-5S22 9 20 11c-3 3-8 1-8 1zM12 12c0 3-2.5 5-5.5 5S2 15 4 13c3-3 8-1 8-1z"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
-    <span>戰情</span></button>
-  <button role="tab" data-p="hz" aria-selected="false">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3.5 2.6 20h18.8z"/><path d="M12 9.5v5"/><circle cx="12" cy="17.4" r="1" fill="currentColor" stroke="none"/></svg>
-    <span>示警</span><i class="dot" id="navDotHz" hidden></i></button>
+    <span>戰情</span><i class="dot" id="navDotHz" hidden></i></button>
   <button role="tab" data-p="eq" aria-selected="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 12 20 7"/><path d="M4.9 19.1A10 10 0 1 1 19.1 4.9"/><path d="M8.5 15.5a5 5 0 1 1 7-7"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
     <span>站臺</span><i class="dot" id="navDot" hidden></i></button>
@@ -2106,7 +2122,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v97';
+const APP_VER = 'v98';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -4568,6 +4584,8 @@ function stationCard(s, imp, i, total) {
     // AI 系集（實驗）只當參考標籤，不影響下面的建議；點了到預判頁看比對
     const ea = ensAt(s);
     if (ea && ea.p34 >= 10) meta.push(`<b class="ai-tag" data-sub="eq:imp">AI 8級風 ${ea.p34}%</b>`);
+    // 地震（12 小時內 3 級以上）、海嘯（站臺那段海岸）、各機關示警（範圍含站臺所在鄉鎮）：點了到戰情的示警地圖
+    meta.push(...(HZ_STTAGS[s.id] || []));
   }
   const aux = !inReport(s);
   return `<article class="st${aux ? ' aux' : ''}" data-id="${s.id}">
@@ -6080,10 +6098,12 @@ function alertCard() {
     rows.push(`<div class="al-r" style="--c:var(--thz)"><b>⚡ ${esc(a.kind)}</b>${esc(a.areas.join('、'))}${a.end ? `<em>至 ${fmtShort(a.end)}</em>` : ''}${
       inZ.length ? `<br>範圍內站臺：${stnList(inZ)}` : ''}</div>`);
   }
+  // 地震、海嘯、各機關示警（跟播報稿同一套：只列跟站臺有關的）；點了到戰情的示警地圖
+  rows.push(...hzAlertRows());
   // 沒有資料 ≠ 沒有事：哪一種沒取得就講哪一種
   const miss = [WX_SRC ? '' : '豪大雨與雷雨特報', LTN_AT ? '' : '落雷實測'].filter(Boolean);
   return `<div class="card pad al-card"${rows.length ? '' : ' style="border-color:var(--edge)"'}>
-    <div class="al-h"><b>${rows.length ? '即時告警' : '即時告警　目前沒有'}</b><small>大雨以上特報・落雷・雷雨特報</small></div>
+    <div class="al-h"><b>${rows.length ? '即時告警' : '即時告警　目前沒有'}</b><small>大雨以上特報・落雷・雷雨特報・地震海嘯示警</small></div>
     ${rows.join('')}
     ${!rows.length && !miss.length ? '<div class="al-none">沒有大雨以上的特報，站臺附近也沒有對地落雷。</div>' : ''}
     ${miss.length ? `<div class="al-none">${esc(miss.join('、'))}還沒取得，不能當成沒有。</div>` : ''}</div>`;
@@ -7596,6 +7616,7 @@ function briefText() {
       const inZ = A.stThz.filter(x => x.adv && x.adv.kind === a.kind).map(x => x.s.name);
       al.push(`${IN}${a.kind}：${a.areas.join('、')}${inZ.length ? `；範圍內站臺 ${inZ.join('、')}` : ''}。`);
     }
+    al.push(...hzBriefLines(IN));
     if (al.length) { L.push(''); L.push('即時告警'); L.push(...al); }
   }
 
@@ -8930,7 +8951,11 @@ async function renderSrch() {
      標成國外機構（規模算法不同，也沒有臺灣的震度）。
    - 國家災防中心民生示警（水庫放流、淹水、土石流、道路封閉、強風…各機關的 CAP）沒有 CORS：
      試停班停課用的同一個轉發服務，抓不到才用後端那份。
-   官方值（震度、預估到達時間、浪高、潮位站實測）與示意（波前動畫的速度、站臺 S 波到達秒數）分開標。 */
+   官方值（震度、預估到達時間、浪高、潮位站實測）與示意（波前動畫的速度、站臺 S 波到達秒數）分開標。
+   放哪裡（v98，使用者：不要多開分頁，要同步在其他頁顯示）：
+   - 戰情 › 總覽：摘要卡（有要注意的放最上面）；戰情 › 路徑 › 示警：地圖與清單（跟「即時影像」一樣是一種地圖）。
+   - 站臺卡：地震、海嘯、各機關示警的標籤；戰情 › 播報員：「即時告警」裡加幾行。
+   - 每頁上方提示條、戰情的紅點：看不到示警內容的時候才出現。 */
 const HZ_FILE = 'data/hazard.json', HZ_UI = 'galepost.ui.hz', HZBASE_KEY = 'galepost.ui.hzbase';
 const USGS_FEED = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson';
 const NCDR_FEED = 'https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx';
@@ -9485,7 +9510,11 @@ function hzDrawCap(list, sel) {
 /* ── 資料來源 ─────────────────────────────────────────── */
 const HZ_LAST = { usgs: 0, cwa: 0, file: 0, ncdr: 0 };
 let HZ_BUSY = false, HZ_T = 0;
-const hzPaneOn = () => { const p = document.getElementById('p-hz'); return !!(p && p.classList.contains('on')); };
+// 示警地圖現在看得到嗎（戰情 › 路徑 › 示警）；摘要卡看得到嗎（戰情 › 總覽）
+const hzTyOn = sub => { const p = document.getElementById('p-ty'), t = document.getElementById('ty-' + sub);
+  return !!(p && p.classList.contains('on') && t && t.classList.contains('on')); };
+const hzPaneOn = () => hzTyOn('map') && MAPFOCUS === 'hz';
+const hzVisible = () => hzPaneOn() || hzTyOn('now');
 async function hzLoadFile() {
   HZ_LAST.file = Date.now();
   try {
@@ -9582,11 +9611,179 @@ function hzRebuild() {
     .sort((a, b) => b.last.issued - a.last.issued);
   const capSrc = HZ_RAW.cap && (!HZ_RAW.fileCap || HZ_RAW.cap.at >= HZ_RAW.fileCap.at) ? HZ_RAW.cap : HZ_RAW.fileCap;
   HZ_CAP = capSrc ? capActive(capSrc.list).map(a => ({ ...a, towns: hzTownsOf(a.text) })) : [];
-  HZ_RAW.capUsed = capSrc === HZ_RAW.cap ? 'live' : capSrc ? 'file' : '';
+  HZ_RAW.capUsed = !capSrc ? '' : capSrc === HZ_RAW.cap ? 'live' : 'file';   // 兩邊都沒有時 null === null，不能算成即時
   hzNotify();
+  hzSummary();
+  hzStationsSync();
+  hzBriefSync();
   hzBadge();
   hzTopBar();
   if (hzPaneOn()) renderHz(false);
+}
+
+/* 從別頁點進來（總覽摘要卡、站臺卡標籤、上方提示條）：到「戰情 › 路徑 › 示警」那一段 */
+function hzGo(seg, id, mine) {
+  HZ_SEG = ['eq', 'tsu', 'cap'].includes(seg) ? seg : 'eq';
+  if (HZ_SEG === 'eq' && id) HZ_SEL.eq = id;
+  if (HZ_SEG === 'cap') { HZ_CAPF = mine ? 'mine' : ''; HZ_SEL.cap = -1; }
+  hzSave();
+  MAPFOCUS = 'hz';
+  try { localStorage.setItem(MAPFOCUS_KEY, 'hz'); } catch (e) {}
+  if (!document.getElementById('p-ty').classList.contains('on')) go('ty');
+  goTySub('map');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-hzgo]');
+  if (b) hzGo(b.dataset.hzgo, b.dataset.id, b.dataset.mine);
+});
+
+/* 站臺跟各種示警的關係：
+   - 地震：12 小時內的氣象署報告，25 km 內最近測站的實測震度；沒有測站時用站臺所在縣市的最大震度。
+   - 海嘯：生效中、有分區預報，而且站臺 5 km 內有海（內陸不算，例如新北市烏來）。
+     不用「鄉鎮有沒有海岸」：港區的鄉鎮（基隆仁愛區）格網上分不到海岸格子，實測會漏標。
+   - 各機關示警：範圍含站臺所在鄉鎮的。雨、颱風不重複（站臺卡已經有特報標籤、總覽有颱風）。 */
+function hzNearSea(lat, lng, km = 5) {
+  if (!REGION) return false;
+  const d = REGION.d, j0 = Math.floor((lat - d.lat0) / d.d), i0 = Math.floor((lng - d.lng0) / d.d);
+  const rj = Math.ceil(km / 111 / d.d), ri = Math.ceil(km / (111 * Math.cos(rad(lat))) / d.d);
+  for (let j = Math.max(0, j0 - rj); j <= Math.min(d.ny - 1, j0 + rj); j++)
+    for (let i = Math.max(0, i0 - ri); i <= Math.min(d.nx - 1, i0 + ri); i++)
+      if (REGION.g[j * d.nx + i] < 0) return true;
+  return false;
+}
+function hzForStation(s) {
+  const now = Date.now(), out = { eq: null, tsu: null, cap: [] };
+  const k = regionIdx(s.lat, s.lng), town = k >= 0 ? REGION.d.towns[k] : null;
+  for (const e of HZ_EQ) {
+    if (e.src !== 'cwa' || e.t < now - 12 * 3600e3) continue;
+    let near = null;
+    for (const x of e.st) { const d = distKm(s, x); if (!near || d < near.d) near = { x, d }; }
+    let lv = -1, obs = false, name = '';
+    if (near && near.d <= 25) { lv = near.x.lv; obs = true; name = near.x.name; }
+    else if (town) { const a = e.areas.find(a => a.c === town[0]); if (a) lv = a.lv; }
+    if (lv >= 3 && lv > (out.eq ? out.eq.lv : -1)) out.eq = { lv, obs, name, e };
+  }
+  if (town && hzNearSea(s.lat, s.lng)) {
+    const v = HZ_TSU.find(v => tsuActive(v.last) && v.last.areas.length), an = tsuAreaOf(town[0], town[1]);
+    const a = v && v.last.areas.find(a => a.name === an);
+    if (a) out.tsu = { a, r: v.last };
+  }
+  if (k >= 0) out.cap = HZ_CAP.filter(a => !/地震|海嘯|降雨|颱風/.test(a.cat) && (a.towns || []).includes(k));
+  return out;
+}
+let HZ_STTAGS = {}, HZ_STSIG = '', HZ_BRSIG = '';
+const capShort = c => c.replace(/及大規模崩塌$/, '');
+function hzStationsSync() {
+  const tags = {};
+  if (REGION) for (const s of camStations()) {
+    const h = hzForStation(s), t = [];
+    if (h.eq) t.push(`<b class="hz-tag" data-hzgo="eq" data-id="${esc(h.eq.e.id)}" style="--c:${INT_COL[h.eq.lv]}">地震 ${INT_TXT[h.eq.lv]}${
+      h.eq.obs ? '（實測）' : '（縣市最大）'}</b>`);
+    if (h.tsu) t.push(`<b class="hz-tag" data-hzgo="tsu" style="--c:${tsuCol(h.tsu.a.color)}">${esc(h.tsu.r.type)}　${
+      h.tsu.a.t ? fmtClock(h.tsu.a.t) + ' 到・' : ''}${esc(h.tsu.a.h)}</b>`);
+    for (const a of h.cap.slice(0, 3)) t.push(`<b class="hz-tag" data-hzgo="cap" data-mine="1" style="--c:${capCol(a.cat)}">${esc(capShort(a.cat))}</b>`);
+    if (t.length) tags[s.id] = t;
+  }
+  const sig = JSON.stringify(tags);
+  HZ_STTAGS = tags;
+  // 標籤變了才重畫站臺清單：每分鐘的資料更新不讓清單一直閃
+  if (sig !== HZ_STSIG) { HZ_STSIG = sig; try { renderStations(); } catch (e) {} }
+}
+// 播報稿「即時告警」裡的幾行（要唸出來、抄進通報的）
+function hzBriefLines(IN) {
+  const L = [], now = Date.now(), sts = camStations();
+  const v = HZ_TSU.find(v => tsuActive(v.last));
+  if (v) {
+    const r = v.last, inA = sts.map(s => ({ s, h: hzForStation(s) })).filter(x => x.h.tsu);
+    L.push(`${IN}${r.type}（第${r.rn}報）：${r.eq.loc} 規模 ${r.eq.mag || '—'}${r.areas.length ? `，預估最快 ${fmtClock(r.areas[0].t)} 到${r.areas[0].name}` : ''}${
+      inA.length ? `；站臺 ${inA.map(x => `${x.s.name}（${x.h.tsu.a.name} ${fmtClock(x.h.tsu.a.t)}，${x.h.tsu.a.h}）`).join('、')}` : ''}。`);
+  }
+  const eqs = new Map();
+  for (const s of sts) { const h = hzForStation(s); if (h.eq && h.eq.e.t > now - 24 * 3600e3) { const a = eqs.get(h.eq.e) || []; a.push({ s, h }); eqs.set(h.eq.e, a); } }
+  for (const [e, xs] of eqs) {
+    L.push(`${IN}地震：${fmtShort(e.t)} ${e.where} 規模 ${e.mag.toFixed(1)}，最大震度 ${INT_TXT[e.max]}；站臺 ${xs.map(x =>
+      `${x.s.name} ${INT_TXT[x.h.eq.lv]}${x.h.eq.obs ? '' : '（縣市最大）'}`).join('、')}。`);
+  }
+  const caps = new Map();
+  for (const s of sts) for (const a of hzForStation(s).cap) { const l = caps.get(a) || []; l.push(s.name); caps.set(a, l); }
+  for (const [a, ns] of caps) L.push(`${IN}${capShort(a.cat)}（${a.author}）：${a.text.length > 60 ? a.text.slice(0, 60) + '…' : a.text}；範圍內站臺 ${ns.join('、')}。`);
+  return L;
+}
+// 播報員頁上面的「即時告警」卡：海嘯（生效中）、24 小時內站臺 3 級以上的地震、範圍含站臺的各機關示警
+function hzAlertRows() {
+  const rows = [], now = Date.now(), hs = camStations().map(s => ({ s, h: hzForStation(s) }));
+  const v = HZ_TSU.find(v => tsuActive(v.last));
+  if (v) {
+    const r = v.last, inA = hs.filter(x => x.h.tsu);
+    rows.push(`<div class="al-r" style="--c:${tsuCol(r.color)}" data-hzgo="tsu"><b>🌊 ${esc(r.type)}</b>${esc(r.eq.loc)} 規模 ${r.eq.mag || '—'}${
+      r.areas.length ? `，最快 ${fmtClock(r.areas[0].t)} 到${esc(r.areas[0].name)}` : ''}${
+      inA.length ? `<br>站臺：${stnList(inA.map(x => `${x.s.name}（${x.h.tsu.a.t ? fmtClock(x.h.tsu.a.t) + '・' : ''}${x.h.tsu.a.h}）`))}` : ''}</div>`);
+  }
+  const eqs = new Map();
+  for (const x of hs) if (x.h.eq && x.h.eq.e.t > now - 24 * 3600e3) eqs.set(x.h.eq.e, (eqs.get(x.h.eq.e) || []).concat(x));
+  for (const [e, xs] of eqs) rows.push(`<div class="al-r" style="--c:${INT_COL[e.max]}" data-hzgo="eq" data-id="${esc(e.id)}"><b>地震 M${e.mag.toFixed(1)}</b>${
+    esc(e.where)}，最大 ${INT_TXT[e.max]}<em>${fmtShort(e.t)}</em><br>站臺：${stnList(xs.map(x => `${x.s.name} ${INT_TXT[x.h.eq.lv]}${x.h.eq.obs ? '' : '（縣市最大）'}`))}</div>`);
+  const caps = new Map();
+  for (const x of hs) for (const a of x.h.cap) caps.set(a, (caps.get(a) || []).concat(x.s.name));
+  for (const [a, ns] of caps) rows.push(`<div class="al-r" style="--c:${capCol(a.cat)}" data-hzgo="cap" data-mine="1"><b>${esc(capShort(a.cat))}</b>${
+    esc(a.text.length > 50 ? a.text.slice(0, 50) + '…' : a.text)}${a.exp ? `<em>至 ${fmtShort(a.exp)}</em>` : ''}<br>範圍內站臺：${stnList(ns)}</div>`);
+  return rows;
+}
+function hzBriefSync() {
+  const sig = JSON.stringify(hzBriefLines(''));
+  if (sig === HZ_BRSIG) return;
+  HZ_BRSIG = sig;
+  const b = document.getElementById('tyBrief'), a = document.getElementById('tyAlert');
+  try { if (a) a.innerHTML = alertCard(); } catch (e) { console.warn('即時告警重畫失敗', e); }
+  if (b && DB.ty.data) b.innerHTML = briefCard();
+}
+
+/* 戰情 › 總覽 的摘要卡：最近的地震、海嘯、生效中的示警各一行，點了到示警地圖。
+   有要注意的（生效中的海嘯、24 小時內的有感地震、範圍含站臺的示警）放最上面、紅框；平常放最後、不搶颱風的位置 */
+function hzSummary() {
+  const top = document.getElementById('hzSumTop'), bot = document.getElementById('hzSum');
+  if (!top || !bot) return;
+  const now = Date.now(), sts = camStations();
+  const eq = HZ_EQ.find(e => (e.src === 'cwa' || HZ_TWBOX(e)) && e.t > now - 7 * 86400e3);
+  const tsu = HZ_TSU.find(v => tsuActive(v.last));
+  const mineK = new Set(sts.map(s => regionIdx(s.lat, s.lng)).filter(k => k >= 0));
+  const capMine = HZ_CAP.filter(a => (a.towns || []).some(k => mineK.has(k)));
+  const hot = !!tsu || !!(eq && hzImportantEq(eq) && eq.t > now - 24 * 3600e3) || capMine.length > 0;
+  const loading = !HZ_LAST.file && !HZ_LAST.usgs;
+  let eqMine = '';
+  if (eq && eq.src === 'cwa') {
+    const best = sts.map(s => ({ s, h: hzForStation(s) })).filter(x => x.h.eq && x.h.eq.e === eq).sort((a, b) => b.h.eq.lv - a.h.eq.lv)[0];
+    if (best) eqMine = `・站臺最大 ${esc(best.s.name)} ${INT_TXT[best.h.eq.lv]}${best.h.eq.obs ? '（實測）' : '（縣市最大）'}`;
+  }
+  const cats = {};
+  HZ_CAP.forEach(a => { cats[capShort(a.cat)] = (cats[capShort(a.cat)] || 0) + 1; });
+  const row = (go, chip, title, sub, extra = '') => `<button type="button" class="hz-sr" data-hzgo="${go}"${extra}>${chip}
+    <span class="hz-rt"><b>${title}</b><small>${sub}</small></span><i class="hz-go">›</i></button>`;
+  const html = `<div class="card pad hz-sum${hot ? ' hot' : ''}">
+    <div class="hz-sum-h"><b>地震・海嘯・示警</b><small>${loading ? '載入中…' : hzSrcShort()}</small></div>
+    ${eq ? row('eq', hzInt(eq.max, true), `地震 M${eq.mag.toFixed(1)}　${esc(eq.where || eq.loc)}`,
+        `${fmtShort(eq.t)}${eq.src === 'usgs' ? '・USGS（氣象署報告還沒出）' : ''}${eqMine}`, ` data-id="${esc(eq.id)}"`)
+      : row('eq', '<span class="hz-int sm na">—</span>', '地震', loading ? '載入中…' : '最近 7 天臺灣附近沒有地震報告')}
+    ${tsu ? row('tsu', `<span class="hz-int sm" style="--c:${tsuCol(tsu.last.color)};--tc:#08131A">${esc(tsu.last.type.replace('海嘯', ''))}</span>`,
+        `${esc(tsu.last.type)} 第 ${tsu.last.rn} 報　${esc(tsu.last.eq.loc)}`,
+        tsu.last.areas.length ? `最快 ${fmtClock(tsu.last.areas[0].t)} 到${esc(tsu.last.areas[0].name)}・浪高 ${esc(tsu.last.areas[0].h)}` : esc(tsu.last.text.slice(0, 40)))
+      : row('tsu', '<span class="hz-int sm na">無</span>', '海嘯', '目前沒有海嘯警報、警訊')}
+    ${row('cap', `<span class="hz-int sm${HZ_CAP.length ? '' : ' na'}" style="--c:#AFC3CF;--tc:#08131A">${HZ_CAP.length}</span>`,
+      `各機關示警 生效 ${HZ_CAP.length} 則${capMine.length ? `・<span class="hz-hot">影響站臺 ${capMine.length} 則</span>` : ''}`,
+      Object.entries(cats).sort((a, b) => capRank(a[0]) - capRank(b[0])).slice(0, 5).map(([c, n]) => `${esc(c)}${n > 1 ? ' ' + n : ''}`).join('・') || '目前沒有',
+      capMine.length ? ' data-mine="1"' : '')}
+  </div>`;
+  (hot ? top : bot).innerHTML = html;
+  (hot ? bot : top).innerHTML = '';
+}
+// 摘要卡上的資料時間（一行）：完整的來源說明在示警地圖下面
+function hzSrcShort() {
+  const k = String(DB.cfg.cwaKey || '').trim(), s = HZ_ST, out = [];
+  out.push(k && s.cwa.at ? `氣象署 即時 ${fmtClock(s.cwa.at)}` : s.file.upd ? `氣象署 後端 ${fmtShort(s.file.upd)}` : '氣象署 —');
+  if (s.usgs.at) out.push(`USGS ${fmtClock(s.usgs.at)}`);
+  const capAt = HZ_RAW.capUsed === 'live' ? HZ_RAW.cap.at : HZ_RAW.fileCap ? HZ_RAW.fileCap.at : 0;
+  out.push(capAt ? `示警 ${HZ_RAW.capUsed === 'live' ? '即時' : '後端'} ${fmtClock(capAt)}` : '示警 —');
+  return out.join('・');
 }
 
 /* ── 重要的新事件：導覽紅點、各頁上方的提示條、開著 App 時跳提示 ──
@@ -9603,11 +9800,14 @@ function hzNotify() {
   imp.forEach(x => HZ_KNOWN.add(x.id));
   if (fresh.length) toast('示警：' + fresh[0].txt);
 }
+// 戰情的紅點：還沒看過的重要事件。正在看總覽或示警地圖就算看過了
 function hzBadge() {
   const dot = document.getElementById('navDotHz');
   if (!dot) return;
+  // 資料到了、真的畫在畫面上才算看過：開 App 自動帶到總覽時資料還沒來，不能先記成看過
+  if (hzVisible() && HZ_KNOWN) { HZ_SEEN = Date.now(); hzSave(); }
   const n = hzImportant().filter(x => x.t > HZ_SEEN && x.t > Date.now() - 24 * 3600e3).length;
-  dot.hidden = !n || hzPaneOn();
+  dot.hidden = !n;
   dot.textContent = n > 9 ? '9+' : String(n);
 }
 // 各頁上方：生效中的海嘯警訊／警報，或 1 小時內站臺所在縣市 4 級以上的地震——值班時不能只靠紅點
@@ -9619,7 +9819,7 @@ function hzTopBar() {
   const eq = HZ_EQ.find(e => e.src === 'cwa' && e.t > Date.now() - 3600e3 && e.areas.some(a => a.lv >= 4 && mine.has(a.c)));
   const html = tsu ? `<b>${esc(tsu.last.type)}</b>${esc(tsu.last.eq.loc)}　規模 ${tsu.last.eq.mag || '—'}　${tsu.last.areas.length ? `最快 ${fmtClock(tsu.last.areas[0].t)} 到達` : ''}`
     : eq ? `<b>地震</b>${esc(eq.where)} 規模 ${eq.mag}　站臺縣市最大 ${INT_TXT[Math.max(...eq.areas.filter(a => mine.has(a.c)).map(a => a.lv))]}` : '';
-  bar.hidden = !html || hzPaneOn();
+  bar.hidden = !html || hzVisible();          // 總覽的摘要卡、示警地圖上已經寫了
   bar.className = 'hz-top' + (tsu && tsuLevel(tsu.last) < 3 ? ' w' : '');
   bar.innerHTML = html ? `${html}<span class="act">看示警 ›</span>` : '';
   bar.dataset.go = tsu ? 'tsu' : 'eq';
@@ -9755,6 +9955,14 @@ function renderHz(redraw) {
     else hzDrawCap(HZ_CAP, HZ_SEL.cap);
   }
 }
+/* 示警地圖打開、關掉的那一刻才做事：路徑頁每次重畫颱風地圖都會呼叫 applyMapTab，
+   不擋的話每次颱風資料更新都會重播一次地震動畫 */
+let HZ_OPEN = false;
+function hzSyncOpen() {
+  const on = hzPaneOn();
+  if (on && !HZ_OPEN) { HZ_OPEN = true; hzOpen(); }
+  else if (!on && HZ_OPEN) { HZ_OPEN = false; hzStop(true); toggleHzFull(false); }
+}
 async function hzOpen() {
   HZ_SEEN = Date.now(); hzSave();
   hzBadge(); hzTopBar();
@@ -9787,11 +9995,7 @@ document.getElementById('hzBody').addEventListener('change', e => {
   if (e.target.id === 'hzEqF') { HZ_EQF = e.target.value; hzSave(); renderHz(false); }
   if (e.target.id === 'hzCapF') { HZ_CAPF = e.target.value; HZ_SEL.cap = -1; renderHz(true); }
 });
-document.getElementById('hzTop').addEventListener('click', e => {
-  const b = e.currentTarget;
-  HZ_SEG = b.dataset.go || 'eq'; hzSave();
-  go('hz');
-});
+document.getElementById('hzTop').addEventListener('click', e => hzGo(e.currentTarget.dataset.go || 'eq'));
 // 開 App 幾秒後才開始抓：先讓颱風、站臺這些主要資料載完，不跟它們搶頻寬
 setTimeout(() => { loadRegion().then(() => hzRefresh(true)).then(hzSchedule); }, 4000);
 
@@ -13474,12 +13678,13 @@ function go(p, auto) {
   if (p === 'rp') generate();
   if (p === 'dg') renderDg();
   if (p === 'cfg') renderSettings();
-  // 示警頁：打開才建地圖、放動畫；切走就停（動畫在背景跑很耗電）
-  if (p === 'hz') hzOpen(); else { hzStop(true); toggleHzFull(false); hzBadge(); hzTopBar(); }
+  // 示警地圖在「戰情 › 路徑」裡：離開戰情就停動畫（在背景跑很耗電）；紅點、上方提示條看現在看得到什麼
+  hzSyncOpen();
   if (p === 'ty') {
     renderTyphoon({}); if (MAP) setTimeout(() => MAP.invalidateSize(), 90);
     if (!DB.cfg.guideTy && !auto) { DB.cfg.guideTy = true; save(); renderStations(); }
   }
+  hzBadge(); hzTopBar();
   window.scrollTo(0, 0);
 }
 $$('.nav button').forEach(b => b.onclick = () => go(b.dataset.p));
@@ -13528,24 +13733,26 @@ addEventListener('keydown', e => {
 /* 路徑頁三個分頁：全域、對焦站臺（框選）、即時影像（Windy）。即時影像沒有颱風也要能看,所以這一排一直都在；
    沒有站臺座標時「對焦站臺」藏起來。切走即時影像就把 iframe 卸掉——Windy 圖磚不快取,掛著會一直拉流量。 */
 function applyMapTab() {
-  const pane = document.getElementById('ty-map'), wy = MAPFOCUS === 'wy';
+  const pane = document.getElementById('ty-map'), wy = MAPFOCUS === 'wy', hz = MAPFOCUS === 'hz';
   const mine = DB.stations.some(x => IS_LIVE(x) && Number.isFinite(x.lat) && Number.isFinite(x.lng));
   if (MAPFOCUS === 'tw' && !mine) MAPFOCUS = 'all';
   $$('#mapFocus button').forEach(b => {
     b.setAttribute('aria-pressed', String(b.dataset.mf === MAPFOCUS));
     if (b.dataset.mf === 'tw') b.hidden = !mine;
   });
-  if (pane) pane.classList.toggle('wy', wy);
+  if (pane) { pane.classList.toggle('wy', wy); pane.classList.toggle('hz', hz); }
   // 用分頁有沒有打開來判斷,不讀 tySub：開機畫地圖時 tySub 還沒宣告（let 暫時死區會丟錯）
   if (wy) { if (pane && pane.classList.contains('on')) renderWindyIfReady(); }
   else { const box = document.getElementById('tyWindy'); if (box) box.innerHTML = ''; }
+  hzSyncOpen();
+  hzBadge(); hzTopBar();
 }
 document.getElementById('mapFocus').addEventListener('click', e => {
   const b = e.target.closest('button[data-mf]'); if (!b) return;
   MAPFOCUS = b.dataset.mf;
   try { localStorage.setItem(MAPFOCUS_KEY, MAPFOCUS); } catch (err) {}
   applyMapTab();
-  if (MAPFOCUS !== 'wy' && DB.ty.data) drawMap(DB.ty.data);
+  if (MAPFOCUS !== 'wy' && MAPFOCUS !== 'hz' && DB.ty.data) drawMap(DB.ty.data);
 });
 document.getElementById('tySeg').addEventListener('click', e => {
   const b = e.target.closest('button[data-ty]');
