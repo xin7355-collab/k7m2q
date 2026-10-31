@@ -100,7 +100,7 @@ main{max-width:56.25rem;margin:0 auto;padding:calc(env(safe-area-inset-top) + 0.
   position:fixed;left:0;right:0;bottom:0;z-index:40;
   background:rgba(5,12,18,.96);backdrop-filter:blur(1rem);-webkit-backdrop-filter:blur(1rem);
   border-top:1px solid rgba(111,211,255,.22);padding-bottom:env(safe-area-inset-bottom);
-  display:grid;grid-template-columns:repeat(5,1fr);
+  display:grid;grid-template-columns:repeat(6,1fr);
 }
 .nav button{padding:0.5625rem 0 0.5rem;display:flex;flex-direction:column;align-items:center;gap:0.1875rem;
   color:var(--fg4);position:relative}
@@ -676,6 +676,87 @@ details.more>.hint{margin-top:0.25rem}
 .srch-res .cam-chip{flex-wrap:wrap}
 .srch-res .cam-chip small{white-space:normal}
 .cam-tw{font-size:0.75rem;color:var(--fg3);margin-left:auto}
+/* ── 示警（地震、海嘯、各機關示警） ── */
+.hz-map{height:min(24rem,52vh);margin-bottom:0.75rem}
+.hz-fill{pointer-events:none}
+.hz-hud{display:flex;align-items:center;gap:0.5rem;padding:0.3125rem 0.5rem;border:1px solid var(--edge2);border-radius:var(--r);
+  background:rgba(5,12,18,.88);font:600 0.75rem/1.3 var(--mono);color:var(--fg2);white-space:nowrap;max-width:calc(100vw - 7rem);overflow:hidden}
+.hz-hud[hidden]{display:none}
+.hz-hud b{color:#FFB37A}
+.hz-hud button{color:var(--acc);font:700 0.75rem var(--sans);min-height:1.75rem;padding:0 0.125rem}
+/* 震央：紅色 ✕＋往外擴的圈 */
+.hz-epi{position:relative;width:28px;height:28px}
+.hz-epi::before,.hz-epi::after{content:"";position:absolute;left:3px;top:12px;width:22px;height:4px;border-radius:1px;background:#FF3B30;
+  box-shadow:0 0 0 1px rgba(255,255,255,.9),0 0 8px #FF3B30}
+.hz-epi::before{transform:rotate(45deg)}
+.hz-epi::after{transform:rotate(-45deg)}
+.hz-epi i{position:absolute;inset:0;border:2px solid #FF3B30;border-radius:50%;animation:hzPulse 1.6s ease-out infinite}
+@keyframes hzPulse{from{transform:scale(.4);opacity:1}to{transform:scale(2.6);opacity:0}}
+/* 測站震度：S 波掃到才跳出來 */
+.hz-st{width:20px;height:20px;border-radius:4px;background:var(--c);color:var(--tc);font:700 11px/20px var(--mono);text-align:center;
+  box-shadow:0 0 0 1px rgba(0,0,0,.55),0 1px 4px rgba(0,0,0,.5);transform:scale(0);opacity:0;transition:transform .25s ease-out,opacity .25s}
+.hz-st.on{transform:scale(1);opacity:1}
+.hz-lbw{text-align:center}   /* 標籤寬度不定：在固定寬的外框裡置中，錨點才會落在測站上 */
+.hz-tn{text-align:center;font:600 11px/16px var(--sans);color:#fff;text-shadow:0 0 3px #000,0 0 6px #000;white-space:nowrap}
+.hz-tide{display:inline-block;padding:1px 5px;border:1px solid #29C5E6;border-radius:3px;background:rgba(5,12,18,.88);color:#BFF3FF;
+  font:700 10px/14px var(--mono);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.hz-epi i{animation:none;opacity:.6}.hz-st{transition:none}}
+.hz-card{margin-bottom:0.25rem}
+.hz-h{display:flex;align-items:center;gap:0.75rem}
+.hz-m{font:700 1.75rem/1 var(--mono);color:#FFB37A;flex:none}
+.hz-tt{font-size:1.125rem;color:var(--c);flex:none}
+.hz-w{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:0.1875rem}
+.hz-w b{font-size:1rem;line-height:1.35}
+.hz-w small{font:0.75rem var(--mono);color:var(--fg3)}
+.hz-int{display:inline-flex;align-items:center;justify-content:center;min-width:3.25rem;padding:0.375rem 0.5rem;border-radius:var(--r2);
+  background:var(--c);color:var(--tc);font:700 0.875rem var(--sans);flex:none;white-space:nowrap}
+.hz-int.sm{min-width:2.75rem;padding:0.25rem 0.375rem;font-size:0.75rem}
+.hz-int.na{background:transparent;color:var(--fg4);box-shadow:inset 0 0 0 1px var(--edge2);font-weight:600}
+.hz-loc{margin:0.5rem 0 0;font-size:0.8125rem;color:var(--fg2)}
+.hz-loc small{color:var(--fg4);font-size:0.6875rem}
+.hz-areas{display:flex;flex-wrap:wrap;gap:0.375rem;margin-top:0.625rem}
+.hz-ar{display:inline-flex;align-items:center;gap:0.375rem;padding:0.25rem 0.25rem 0.25rem 0.5rem;border:1px solid var(--edge2);border-radius:var(--r2);
+  font-size:0.75rem;color:var(--fg2)}
+.hz-ar b{padding:0.0625rem 0.375rem;border-radius:var(--r3);background:var(--c);color:var(--tc);font-size:0.6875rem}
+.hz-mine{margin-top:0.75rem;border-top:1px solid var(--edge);padding-top:0.5rem}
+.hz-mine h3{font-size:0.8125rem;color:var(--fg3);margin:0 0 0.25rem;font-weight:600}
+.hz-me{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0.125rem 0.5rem;align-items:center;padding:0.4375rem 0;border-bottom:1px solid var(--edge)}
+.hz-me:last-child{border-bottom:0}
+.hz-me b{font-size:0.875rem}
+.hz-me > span{display:flex;align-items:center;gap:0.375rem;justify-self:end;text-align:right}
+.hz-me > span small{font-size:0.6875rem;color:var(--fg3);max-width:11rem}
+.hz-me .hz-est{grid-column:1 / -1;font:0.6875rem var(--mono);color:var(--fg4)}
+.hz-list{display:flex;flex-direction:column}
+.hz-row{display:flex;align-items:center;gap:0.625rem;width:100%;padding:0.5rem 0.25rem;border-bottom:1px solid var(--edge);text-align:left;min-height:3rem}
+.hz-row[aria-current="true"],.hz-cap[aria-current="true"]{background:var(--acc-d);box-shadow:inset 2px 0 0 var(--acc)}
+.hz-rt{display:flex;flex-direction:column;gap:0.125rem;min-width:0}
+.hz-rt b{font-size:0.875rem;font-weight:600;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hz-rt small{font:0.6875rem var(--mono);color:var(--fg4)}
+.hz-tsu{border-left:3px solid var(--c)}
+.hz-tsu.l3{background:linear-gradient(180deg,rgba(255,82,71,.12),transparent 5rem),var(--surf)}
+.hz-txt{margin:0.625rem 0 0;font-size:0.8125rem;line-height:1.7;color:var(--fg2)}
+.hz-tb{width:100%;border-collapse:collapse;margin-top:0.75rem;font-size:0.8125rem}
+.hz-tb th{text-align:left;font:600 0.6875rem var(--mono);color:var(--fg4);padding:0 0.375rem 0.25rem;border-bottom:1px solid var(--edge2)}
+.hz-tb td{padding:0.4375rem 0.375rem;border-bottom:1px solid var(--edge);vertical-align:top}
+.hz-tb tr[style] td:first-child{box-shadow:inset 3px 0 0 var(--c)}
+.hz-tb td small{display:block;font-size:0.6875rem;color:var(--fg4);margin-top:0.125rem}
+.hz-rep{font-size:0.75rem;line-height:1.65;color:var(--fg2);margin:0.625rem 0 0}
+.hz-cap{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem;width:100%;padding:0.625rem 0.375rem;border-bottom:1px solid var(--edge);text-align:left}
+.hz-cat{padding:0.125rem 0.4375rem;border-radius:var(--r3);background:var(--c);color:#08131A;font-size:0.6875rem;font-weight:700}
+.hz-me-t{padding:0.125rem 0.375rem;border:1px solid var(--sb);border-radius:var(--r3);color:var(--sb);font-size:0.6875rem;font-weight:600}
+.hz-ct{flex:0 0 100%;font-size:0.8125rem;line-height:1.6;color:var(--fg2);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.hz-cap[aria-current="true"] .hz-ct{-webkit-line-clamp:unset;display:block}
+.hz-cap small{flex:0 0 100%;font:0.6875rem var(--mono);color:var(--fg4)}
+.hz-n{display:inline-block;margin-left:0.25rem;min-width:1.125rem;padding:0 0.25rem;border-radius:0.5625rem;background:var(--no);color:#fff;
+  font:700 0.6875rem/1.125rem var(--mono);font-style:normal;vertical-align:1px}
+.hz-n[hidden]{display:none}
+.hz-top{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem 0.5rem;width:100%;margin:0 0 0.75rem;padding:0.625rem 0.75rem;text-align:left;
+  border:1px solid rgba(255,82,71,.55);border-left:3px solid var(--no);border-radius:var(--r2);background:rgba(255,82,71,.12);color:#FFB3AD;font-size:0.8125rem}
+.hz-top.w{border-color:rgba(255,138,61,.5);border-left-color:var(--or);background:rgba(255,138,61,.1);color:#FFC9A3}
+.hz-top b{color:#fff}
+.hz-top .act{margin-left:auto;color:var(--acc);font-weight:600}
+.hz-top[hidden]{display:none}
+
 .cam-view{position:relative;background:#000;border-radius:var(--r);overflow:hidden;min-height:12rem;display:flex;align-items:center;justify-content:center}
 .cam-view img{display:block;width:100%;height:auto}
 .cam-view img[hidden]{display:none}
@@ -1342,6 +1423,8 @@ body.cam-full .sheet{z-index:1300}
 <!-- 頂欄拿掉了：Logo、時鐘、設定鈕、會動的風級條都刪掉,畫面讓給內容。時鐘移到底部導覽上緣,設定在導覽最右邊。 -->
 
 <main>
+<!-- 生效中的海嘯警訊／警報、站臺縣市 4 級以上的地震：每一頁上方都看得到，點了到示警頁 -->
+<button type="button" class="hz-top" id="hzTop" hidden></button>
 
 <!-- ══════════ 颱風 ══════════ -->
 <section class="pane" id="p-ty">
@@ -1393,6 +1476,19 @@ body.cam-full .sheet{z-index:1300}
     <!-- 模式系集（ECMWF，非官方）：5 天以後的路徑走向，預設不畫在圖上 -->
     <div id="tyEc"></div>
   </div>
+</section>
+
+<!-- ══════════ 示警 ══════════ -->
+<!-- 地震、海嘯、各機關示警（v96）。地圖固定在這頁、不跟著清單重畫：換一個地震只換圖層，不重建地圖 -->
+<section class="pane" id="p-hz">
+  <div class="seg sub" id="hzSeg">
+    <button type="button" data-hz="eq" aria-pressed="true">地震</button>
+    <button type="button" data-hz="tsu" aria-pressed="false">海嘯<i class="hz-n" data-n="tsu" hidden></i></button>
+    <button type="button" data-hz="cap" aria-pressed="false">示警<i class="hz-n" data-n="cap" hidden></i></button>
+  </div>
+  <div class="cam-map hz-map" id="hzMap"></div>
+  <div id="hzBody"></div>
+  <p class="ai-cite" id="hzCite"></p>
 </section>
 
 <!-- ══════════ 站臺 ══════════ -->
@@ -1488,6 +1584,9 @@ body.cam-full .sheet{z-index:1300}
   <button role="tab" data-p="ty" aria-selected="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 12c0-3 2.5-5 5.5-5S22 9 20 11c-3 3-8 1-8 1zM12 12c0 3-2.5 5-5.5 5S2 15 4 13c3-3 8-1 8-1z"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
     <span>戰情</span></button>
+  <button role="tab" data-p="hz" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3.5 2.6 20h18.8z"/><path d="M12 9.5v5"/><circle cx="12" cy="17.4" r="1" fill="currentColor" stroke="none"/></svg>
+    <span>示警</span><i class="dot" id="navDotHz" hidden></i></button>
   <button role="tab" data-p="eq" aria-selected="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 12 20 7"/><path d="M4.9 19.1A10 10 0 1 1 19.1 4.9"/><path d="M8.5 15.5a5 5 0 1 1 7-7"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
     <span>站臺</span><i class="dot" id="navDot" hidden></i></button>
@@ -2007,7 +2106,7 @@ const CWA_BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
 /* 版本字串,要跟 sw.js 的 CACHE 對得上。
    離線快取是「快取優先」,裝過一次之後使用者可能整整幾天都在跑舊版,
    而畫面上完全看不出來 —— 設定頁把版本印出來,並給一顆手動更新的按鈕。 */
-const APP_VER = 'v95';
+const APP_VER = 'v96';
 const GDACS_URL = 'https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP';
 const MIN_GAP = 60000;                       // 手動更新最短間隔，防止連點造成請求風暴
 let _last = 0, _busy = false, _autoT = null;
@@ -2219,12 +2318,13 @@ const CWA_PATH_SET = 'W-C0034-005';
 // 對外只回報「官方路徑為什麼沒拿到」——那才是推算停擺的原因。
 function cwaDiag() { return _cwaDiag[CWA_PATH_SET] || ''; }
 
-async function cwaJson(dataset, key) {
+async function cwaJson(dataset, key, params = {}) {
   const proxy = (DB.cfg.cwaProxy || '').trim();
+  const qs = Object.keys(params).length ? '&' + new URLSearchParams(params) : '';
   let directErr = '';
   try {
     const j = await getJSON(
-      `${CWA_BASE}/${dataset}?Authorization=${encodeURIComponent(key)}&format=JSON`);
+      `${CWA_BASE}/${dataset}?Authorization=${encodeURIComponent(key)}&format=JSON${qs}`);
     _cwaDiag[dataset] = '';
     return j;
   } catch (e) {
@@ -2245,7 +2345,7 @@ async function cwaJson(dataset, key) {
     const r = await fetch(proxy, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ cwaDataset: dataset, cwaKey: key, cwaParams: {} }),
+      body: JSON.stringify({ cwaDataset: dataset, cwaKey: key, cwaParams: params }),
       signal: c.signal,
     });
     if (!r.ok) throw new Error('代理回應 ' + r.status);
@@ -8643,7 +8743,8 @@ function loadRegion() {
   if (REGION) return Promise.resolve(REGION);
   if (!_regP) _regP = getJSON(new URL('assets/region.json', location.href).href, 20000)
     .then(d => {
-      if (!d || d.v !== 1 || !Array.isArray(d.rows)) throw new Error('格式不對');
+      // v2：靠岸海上補的格子存成 -(編號+2)，查詢照樣算那個鄉鎮，示警地圖上色時不塗（見 build_region.py）
+      if (!d || (d.v !== 1 && d.v !== 2) || !Array.isArray(d.rows)) throw new Error('格式不對');
       // 每一列是「長度、編號」交替的連續編碼；展開成一整塊，查的時候直接算位置
       const g = new Int16Array(d.ny * d.nx);
       d.rows.forEach((r, j) => { let x = j * d.nx; for (let k = 0; k < r.length; k += 2) { g.fill(r[k + 1], x, x + r[k]); x += r[k]; } });
@@ -8657,7 +8758,7 @@ function regionOf(lat, lng) {
   if (!REGION || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const d = REGION.d, j = Math.floor((lat - d.lat0) / d.d), i = Math.floor((lng - d.lng0) / d.d);
   if (j < 0 || j >= d.ny || i < 0 || i >= d.nx) return null;
-  const k = REGION.g[j * d.nx + i];
+  const v = REGION.g[j * d.nx + i], k = v <= -2 ? -v - 2 : v;
   return k >= 0 ? d.towns[k] : null;
 }
 const COUNTY_ORDER = ['基隆市', '台北市', '新北市', '桃園市', '新竹市', '新竹縣', '苗栗縣', '台中市', '彰化縣', '南投縣', '雲林縣',
@@ -8819,6 +8920,879 @@ async function renderSrch() {
   await Promise.all([loadCams(), loadWfu(), loadRegion()]);
   if (document.getElementById('srchBox') === box) results(true);
 }
+
+/* ═══ 示警：地震、海嘯、各機關示警 ═══════════════════════════
+   使用者 10/31：「新增地震、海嘯等等天然災害示警，還有發生地，地圖也要顯示，例如震度擴散動畫，還有海嘯」。
+   來源與時效（2026-10-31 從 Actions 實測）：
+   - 氣象署地震報告（E-A0015 顯著、E-A0016 小區域）、海嘯資訊（E-A0014）有 CORS：填了個人授權碼就前端直連，
+     報告一出來（震後幾分鐘）就看得到；沒填的看後端 data/hazard.json——排程實際 1～6 小時才跑一次，畫面一律標時間。
+   - USGS 地震：免金鑰、有 CORS、每分鐘更新。氣象署報告還沒出、或沒填授權碼時，至少先知道哪裡震了多大；
+     標成國外機構（規模算法不同，也沒有臺灣的震度）。
+   - 國家災防中心民生示警（水庫放流、淹水、土石流、道路封閉、強風…各機關的 CAP）沒有 CORS：
+     試停班停課用的同一個轉發服務，抓不到才用後端那份。
+   官方值（震度、預估到達時間、浪高、潮位站實測）與示意（波前動畫的速度、站臺 S 波到達秒數）分開標。 */
+const HZ_FILE = 'data/hazard.json', HZ_UI = 'galepost.ui.hz', HZBASE_KEY = 'galepost.ui.hzbase';
+const USGS_FEED = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson';
+const NCDR_FEED = 'https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx';
+const HZ_VP = 6, HZ_VS = 3.5;      // km/s：地殼平均 P、S 波速度，只用來畫波前、估站臺幾秒後搖（示意）
+const HZ_TSU_KMH = 713;            // 深海（約 4 公里）海嘯波速 √(gh)；沒有官方預估到達時間時才用（示意）
+// 震度色：1～4 級綠→黃→橙，5 級以上紅→紫。不是氣象署報告圖的原色——這裡是暗底地圖，原色的淺綠、白看不見
+const INT_COL = ['#8FA3AE', '#7FD8A6', '#2FBF71', '#F4E04D', '#F7A23B', '#F26B2A', '#E8412F', '#C42A2A', '#9E1F4D', '#7B2C9E'];
+const INT_TXT = ['0級', '1級', '2級', '3級', '4級', '5弱', '5強', '6弱', '6強', '7級'];
+const INT_SH = ['0', '1', '2', '3', '4', '5-', '5+', '6-', '6+', '7'];
+const intFg = lv => lv >= 5 ? '#fff' : '#08131A';
+// 「3級」「5弱」「6強」→ 0～9 的序（比大小、上色用）；看不懂回 -1
+function intLv(s) {
+  const m = String(s == null ? '' : s).match(/([0-7])\s*級?\s*(弱|強)?/);
+  if (!m) return -1;
+  const n = +m[1];
+  return n <= 4 ? n : n === 5 ? (m[2] === '強' ? 6 : 5) : n === 6 ? (m[2] === '強' ? 8 : 7) : 9;
+}
+const hzTime = s => { const t = Date.parse(s); return Number.isFinite(t) ? t : 0; };
+// 經度一律放在 -60～300：太平洋置中，智利、巴拿馬的震央畫在臺灣右邊而不是地圖另一端
+const hzLng = x => Math.round((((x + 60) % 360 + 360) % 360 - 60) * 1e4) / 1e4;
+const HZ_TWBOX = e => e.lat >= 20.5 && e.lat <= 26.8 && e.lng >= 117.5 && e.lng <= 123.8;
+
+let HZ_RAW = { liveEq: [], fileEq: [], liveTsu: null, fileTsu: [], usgs: [], cap: null, capLive: false };
+const HZ_ST = { cwa: { at: 0, err: '' }, file: { at: 0, err: '', upd: 0, hasKey: null }, usgs: { at: 0, err: '' }, ncdr: { at: 0, err: '' } };
+let HZ_EQ = [], HZ_TSU = [], HZ_CAP = [];
+let HZ_SEG = 'eq', HZ_EQF = 'tw', HZ_CAPF = '', HZ_SEEN = 0, HZ_SEL = { eq: '', tsu: '', cap: -1 };
+let HZ_KNOWN = null;               // 這次開 App 以來看過的重要事件：之後新冒出來的才跳提示
+try {
+  const u = JSON.parse(localStorage.getItem(HZ_UI) || '{}');
+  if (['eq', 'tsu', 'cap'].includes(u.seg)) HZ_SEG = u.seg;
+  if (u.eqf === 'all') HZ_EQF = 'all';
+  HZ_SEEN = +u.seen || 0;
+} catch (e) {}
+function hzSave() { try { localStorage.setItem(HZ_UI, JSON.stringify({ seg: HZ_SEG, eqf: HZ_EQF, seen: HZ_SEEN })); } catch (e) {} }
+
+/* ── 解析：氣象署原始格式（前端直連拿到的）與後端精簡過的同一套欄位，一支吃兩種 ── */
+function hzEqFromCwa(r, small) {
+  const i = (r && r.EarthquakeInfo) || {}, p = i.Epicenter || {}, m = i.EarthquakeMagnitude || {};
+  const lat = +p.EpicenterLatitude, lng = +p.EpicenterLongitude, t = hzTime(i.OriginTime);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !t) return null;
+  const areas = {}, st = [], seen = new Set();
+  for (const a of toArr((r.Intensity || {}).ShakingArea)) {
+    const lv = intLv(a.AreaIntensity);
+    // 「最大震度 3 級地區」那種摘要列的縣市欄位是「花蓮縣、宜蘭縣」
+    for (const c of String(a.CountyName || '').split(/[、,，\s]+/).filter(Boolean)) {
+      const k = cnorm(c);
+      if (lv > (areas[k] ?? -1)) areas[k] = lv;
+    }
+    for (const s of toArr(a.EqStation)) {
+      const la = +s.StationLatitude, lo = +s.StationLongitude, l = intLv(s.SeismicIntensity);
+      const id = s.StationID || s.StationName || `${la},${lo}`;
+      if (!Number.isFinite(la) || !Number.isFinite(lo) || !la || l < 0 || seen.has(id)) continue;
+      seen.add(id);
+      const dk = +s.EpicenterDistance;
+      st.push({ name: s.StationName || id, lat: la, lng: lo, lv: l, d: Number.isFinite(dk) ? dk : distKm({ lat, lng }, { lat: la, lng: lo }) });
+    }
+  }
+  const loc = String(p.Location || '').replace(/\s+/g, ' ').trim();
+  const where = ((loc.match(/[(（]位於(.+?)[)）]/) || [])[1] || loc).trim();
+  const max = Math.max(-1, ...Object.values(areas), ...st.map(s => s.lv));
+  return {
+    id: `c${t}_${lat}_${lng}`, src: 'cwa', small: !!(small || r._s), no: r.EarthquakeNo, t, lat, lng: hzLng(lng),
+    depth: +i.FocalDepth || 0, mag: +m.MagnitudeValue || 0, loc: loc.replace(/\s*[(（]位於.+?[)）]\s*/, ''), where,
+    text: r.ReportContent || '', web: r.Web || '', img: r.ReportImageURI || '', shake: r.ShakemapImageURI || '',
+    issued: hzTime(r.IssueTime), max,
+    areas: Object.entries(areas).map(([c, lv]) => ({ c, lv })).filter(a => a.lv >= 0).sort((a, b) => b.lv - a.lv),
+    st: st.sort((a, b) => a.d - b.d),
+  };
+}
+function hzEqFromUsgs(f) {
+  const p = (f && f.properties) || {}, c = ((f && f.geometry) || {}).coordinates || [];
+  const lng = +c[0], lat = +c[1], t = +p.time;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !t || (p.type && p.type !== 'earthquake')) return null;
+  return { id: 'u' + f.id, src: 'usgs', t, lat, lng: hzLng(lng), depth: Math.max(0, +c[2] || 0), mag: +p.mag || 0,
+    magType: p.magType || '', loc: p.place || '', where: p.place || '', web: p.url || '', tsunami: !!p.tsunami, max: -1, areas: [], st: [] };
+}
+function hzTsuFromCwa(r) {
+  const i = (r && r.EarthquakeInfo) || {}, p = i.Epicenter || {}, m = i.EarthquakeMagnitude || {}, w = r.TsunamiWave || {};
+  const issued = hzTime(r.IssueTime);
+  if (!issued) return null;
+  return {
+    id: `${r.TsunamiNo}_${r.ReportNo}`, no: String(r.TsunamiNo || issued), rn: parseInt(String(r.ReportNo || '').replace(/\D/g, ''), 10) || 0,
+    type: r.ReportType || '海嘯消息', color: r.ReportColor || '', text: r.ReportContent || '', web: r.Web || '',
+    issued, until: hzTime((r.ValidTime || {}).EndTime),
+    eq: { t: hzTime(i.OriginTime), lat: +p.EpicenterLatitude, lng: hzLng(+p.EpicenterLongitude), depth: +i.FocalDepth || 0,
+      mag: +m.MagnitudeValue || 0, loc: String(p.Location || '').replace(/\s+/g, ' ').trim(), src: i.Source || '' },
+    areas: toArr(w.WarningArea).map(a => ({ name: a.AreaName || '', desc: a.AreaDesc || '', color: a.AreaColor || '',
+      t: hzTime(a.ArrivalTime), h: a.WaveHeight || '' })).filter(a => a.name).sort((a, b) => a.t - b.t),
+    // 潮位站座標偶爾是 0,0（2024-04-03 那報的臺中港）：沒座標的只列表、不畫
+    obs: toArr(w.TsuStation).map(s => ({ name: s.StationName || '', lat: +s.StationLatitude, lng: +s.StationLongitude,
+      t: hzTime(s.ArrivalTime), h: s.WaveHeight || '' })).filter(s => s.name).sort((a, b) => a.t - b.t),
+  };
+}
+// 0＝沒有威脅或已解除、1＝消息（太平洋有威脅，監視中）、2＝警訊、3＝警報
+function tsuLevel(r) {
+  if (!r || /解除/.test(r.type)) return 0;
+  if (/警報/.test(r.type)) return 3;
+  if (/警訊/.test(r.type)) return 2;
+  return /黃|橙|紅/.test(r.color) ? 1 : 0;
+}
+const tsuActive = r => tsuLevel(r) > 0 && (!r.until || r.until > Date.now());
+const TSU_COL = { 綠色: '#4FD39A', 黃色: '#E2CC5C', 橙色: '#FF8A3D', 紅色: '#FF5247' };
+const tsuCol = c => TSU_COL[c] || '#89A2AF';
+
+/* CAP 的生效、失效時間寫成「2026/10/31 下午 02:29:00」（臺灣時間、12 小時制），Date.parse 讀不懂 */
+function capTime(s) {
+  const m = String(s || '').match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(上午|下午)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return hzTime(s);
+  let h = +m[5];
+  if (m[4] === '上午' && h === 12) h = 0;
+  if (m[4] === '下午' && h < 12) h += 12;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], h - 8, +m[6], +(m[7] || 0));
+}
+function capFrom(e) {
+  // 後端攤平成字串；即時抓的是 {"#text"}、{"@href"}、{"@term"}、{name} 這種物件
+  const g = k => { const v = e && e[k]; return v == null ? '' : typeof v === 'object' ? String(v['#text'] ?? v['@href'] ?? v['@term'] ?? v.name ?? '') : String(v); };
+  const text = g('summary').replace(/<[^>]+>/g, '').replace(/[​\s]+/g, ' ').trim();
+  return { id: g('id'), cat: g('category') || g('title'), author: g('author'), text, msg: g('msgType'),
+    upd: hzTime(g('updated')), eff: capTime(g('effective')), exp: capTime(g('expires')) };
+}
+const CAP_CLEAR = /解除|已無.{0,6}警戒|恢復通行|取消/;
+// 同一件事的新一則會取代舊一則：同一座水庫、同一個感測器、同一類氣象特報
+function capKey(a) {
+  if (/地震|海嘯/.test(a.cat)) return a.id;
+  if (a.author === '中央氣象署') return a.cat;
+  let t = a.text.replace(/^\s*\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}\s*/, '').replace(/^水利署訊\s*[:：]?\s*/, '');
+  const sensor = t.match(/感測器\s*([^)）]+)/);
+  if (sensor) return a.cat + '|' + sensor[1].trim();
+  if (/土石流/.test(a.cat)) { const c = COUNTY_ORDER.find(c => cnorm(t).includes(c)); if (c) return a.cat + '|' + c; }
+  return a.cat + '|' + cnorm(t.split(/[:：(（。,，\s]|已無|解除|警戒/)[0]).slice(0, 24);
+}
+const CAP_ORDER = ['海嘯', '地震', '颱風', '土石流', '淹水', '河川', '降雨', '強風', '高溫', '低溫', '濃霧', '水庫', '道路'];
+const CAP_COLS = { 海嘯: '#FF5247', 地震: '#F7A23B', 颱風: '#C08BFF', 土石流: '#C98B4E', 淹水: '#29C5E6', 河川: '#29C5E6',
+  降雨: '#4C9BFF', 強風: '#9FD86B', 高溫: '#FF7A45', 低溫: '#8AB4FF', 濃霧: '#B8C4CC', 水庫: '#5BD1B5', 道路: '#E0C341' };
+const capRank = c => { const i = CAP_ORDER.findIndex(k => c.includes(k)); return i < 0 ? 99 : i; };
+const capCol = c => CAP_COLS[CAP_ORDER.find(k => c.includes(k))] || '#AFC3CF';
+function capActive(list, now = Date.now()) {
+  const by = new Map();
+  for (const a of list) {
+    if (!a.id || !a.cat) continue;
+    const k = capKey(a), o = by.get(k);
+    if (!o || a.upd > o.upd) by.set(k, a);
+  }
+  return [...by.values()].filter(a => a.msg !== 'Cancel' && !CAP_CLEAR.test(a.text) && (!a.exp || a.exp > now))
+    .sort((a, b) => capRank(a.cat) - capRank(b.cat) || b.upd - a.upd);
+}
+
+/* ── 鄉鎮對照：示警的範圍只有文字（「新竹縣，寶山鄉、峨眉鄉；新竹市，東區」），用鄉鎮表找出是哪幾個 ── */
+let HZ_TOWNIX = null;
+function hzTownIndex() {
+  if (HZ_TOWNIX || !REGION) return HZ_TOWNIX;
+  const by = {}, cnt = {}, uniq = {};
+  REGION.d.towns.forEach(([c, t], k) => { (by[c] = by[c] || []).push([t, k]); cnt[t] = (cnt[t] || 0) + 1; });
+  // 沒寫縣市只寫鄉鎮的（「羅東鎮_站前南路」）：全臺只有一個同名的才算，「東區」「中正區」到處都有
+  REGION.d.towns.forEach(([, t], k) => { if (cnt[t] === 1 && t.length >= 3) uniq[t] = k; });
+  return (HZ_TOWNIX = { by, uniq });
+}
+function hzTownsOf(text) {
+  const ix = hzTownIndex();
+  if (!ix) return [];
+  const s = cnorm(text), hits = [], out = new Set();
+  for (const c of Object.keys(ix.by)) for (let i = s.indexOf(c); i >= 0; i = s.indexOf(c, i + c.length)) hits.push([i, c]);
+  hits.sort((a, b) => a[0] - b[0]);
+  hits.forEach(([i, c], n) => {
+    // 縣市後面到下一個縣市之間寫到的鄉鎮；一個都沒寫就是整個縣市
+    const seg = s.slice(i + c.length, n + 1 < hits.length ? hits[n + 1][0] : s.length);
+    const ts = ix.by[c].filter(([t]) => seg.includes(t));
+    (ts.length ? ts : ix.by[c]).forEach(([, k]) => out.add(k));
+  });
+  if (!hits.length) for (const [t, k] of Object.entries(ix.uniq)) if (s.includes(t)) out.add(k);
+  return [...out];
+}
+// 座標 → 鄉鎮編號（含海岸補的格子）；格網外、遠海 -1
+function regionIdx(lat, lng) {
+  if (!REGION) return -1;
+  const d = REGION.d, j = Math.floor((lat - d.lat0) / d.d), i = Math.floor((lng - d.lng0) / d.d);
+  if (j < 0 || j >= d.ny || i < 0 || i >= d.nx) return -1;
+  const v = REGION.g[j * d.nx + i];
+  return v >= 0 ? v : v <= -2 ? -v - 2 : -1;
+}
+/* 海嘯的六個沿海分區（氣象署的分區說明）對到鄉鎮。只塗海岸外那一圈（region.json 補的海上格子），
+   畫出來就是一段一段的海岸線。 */
+const TSU_AREAS = {
+  北部沿海地區: { c: ['新北市', '基隆市'] },
+  東北沿海地區: { c: ['宜蘭縣'], not: ['南澳鄉'] },
+  東部沿海地區: { c: ['花蓮縣'], plus: [['宜蘭縣', '南澳鄉'], ['台東縣', '長濱鄉']] },
+  東南沿海地區: { c: ['台東縣'], not: ['長濱鄉'], plus: [['屏東縣', '滿州鄉'], ['屏東縣', '牡丹鄉']] },
+  西南沿海地區: { c: ['台南市', '高雄市', '屏東縣'], not: ['滿州鄉', '牡丹鄉'] },
+  海峽沿海地區: { c: ['桃園市', '新竹縣', '新竹市', '苗栗縣', '台中市', '彰化縣', '雲林縣', '嘉義縣', '嘉義市', '澎湖縣', '金門縣', '連江縣'] },
+};
+function tsuAreaOf(county, town) {
+  for (const [n, a] of Object.entries(TSU_AREAS)) {
+    if ((a.plus || []).some(([c, t]) => c === county && t === town)) return n;
+    if (a.c.includes(county) && !(a.not || []).includes(town)) return n;
+  }
+  return '';
+}
+
+/* ── 地圖上色：鄉鎮格網畫成一張半透明圖，蓋在底圖上 ──────────────
+   格網列是等緯度，Leaflet 的圖是麥卡托投影：直接貼上去，臺灣南北兩端會差到 2 公里，
+   所以畫布的每一列先換算成麥卡托等距再回頭找格網那一列。 */
+let HZ_GRID = null;
+function hzGrid() {
+  if (HZ_GRID || !REGION) return HZ_GRID;
+  const d = REGION.d, W = d.nx, H = d.ny, s = d.lat0, n = d.lat0 + d.ny * d.d;
+  const merc = la => Math.log(Math.tan(Math.PI / 4 + rad(la) / 2)), yN = merc(n), yS = merc(s);
+  const rowJ = new Int16Array(H), rowLat = new Float32Array(H);
+  for (let r = 0; r < H; r++) {
+    const la = deg(2 * Math.atan(Math.exp(yN + (r + 0.5) * (yS - yN) / H)) - Math.PI / 2);
+    rowLat[r] = la;
+    rowJ[r] = clamp(Math.floor((la - d.lat0) / d.d), 0, d.ny - 1);
+  }
+  // 各鄉鎮的中心（陸地格子平均），示警地圖框範圍用
+  const sum = new Float64Array(d.towns.length * 3);
+  for (let j = 0; j < d.ny; j++) for (let i = 0; i < d.nx; i++) {
+    const v = REGION.g[j * d.nx + i];
+    if (v < 0) continue;
+    sum[v * 3] += d.lat0 + (j + 0.5) * d.d; sum[v * 3 + 1] += d.lng0 + (i + 0.5) * d.d; sum[v * 3 + 2]++;
+  }
+  const ctr = d.towns.map((_, k) => sum[k * 3 + 2] ? [sum[k * 3] / sum[k * 3 + 2], sum[k * 3 + 1] / sum[k * 3 + 2]] : null);
+  return (HZ_GRID = { W, H, rowJ, rowLat, ctr, bounds: [[s, d.lng0], [n, d.lng0 + d.nx * d.d]] });
+}
+const hzRGBA = (hex, a) => {
+  const n = parseInt(hex.slice(1), 16);
+  return ((Math.round(a * 255) << 24) | ((n & 255) << 16) | (((n >> 8) & 255) << 8) | (n >> 16)) >>> 0;
+};
+/* 要塗的格子：colorOf(鄉鎮編號, 是不是陸地) 回傳顏色（hzRGBA）或 0。
+   給了原點就照距離排好，動畫時由近而遠一圈一圈塗出去。 */
+function hzCells(colorOf, origin, far) {
+  const G = hzGrid();
+  if (!G) return null;
+  const d = REGION.d, g = REGION.g, pix = [], col = [], dist = [];
+  for (let r = 0; r < G.H; r++) {
+    const base = G.rowJ[r] * d.nx, la = G.rowLat[r], kx = Math.cos(rad(la)) * 111.32;
+    for (let i = 0; i < G.W; i++) {
+      const v = g[base + i];
+      if (v === -1) continue;
+      const c = colorOf(v >= 0 ? v : -v - 2, v >= 0);
+      if (!c) continue;
+      pix.push(r * G.W + i); col.push(c);
+      if (origin) {
+        const lo = d.lng0 + (i + 0.5) * d.d;
+        dist.push(far ? distKm(origin, { lat: la, lng: lo }) : Math.hypot((lo - origin.lng) * kx, (la - origin.lat) * 110.57));
+      }
+    }
+  }
+  const order = Uint32Array.from(pix.keys());
+  if (origin) order.sort((a, b) => dist[a] - dist[b]);
+  return { pix, col, dist, order, ptr: 0 };
+}
+let HZ_CV = null, HZ_IMG = null, HZ_CELLS = null;
+function hzPaintTo(R) {
+  if (!HZ_CV || !HZ_CELLS) return;
+  const c = HZ_CELLS, buf = new Uint32Array(HZ_IMG.data.buffer);
+  let n = 0;
+  while (c.ptr < c.order.length && (!c.dist.length || c.dist[c.order[c.ptr]] <= R)) {
+    const k = c.order[c.ptr++];
+    buf[c.pix[k]] = c.col[k]; n++;
+  }
+  if (n) HZ_CV.getContext('2d').putImageData(HZ_IMG, 0, 0);
+}
+function hzPaintStart(cells) {
+  const G = hzGrid();
+  if (!G || !HZ_CV) return;
+  HZ_IMG = new ImageData(G.W, G.H);
+  HZ_CV.getContext('2d').clearRect(0, 0, G.W, G.H);
+  HZ_CELLS = cells;
+}
+
+/* ── 地圖 ─────────────────────────────────────────────── */
+let HZMAP = null, HZ_LG = null, HZ_OV = null, HZ_SHOWN = '';
+function hzEnsureMap() {
+  const el = document.getElementById('hzMap');
+  if (!el) return null;
+  if (window.__noLeaflet || typeof L === 'undefined') {
+    if (!el.firstChild) el.innerHTML = '<div class="ph">地圖元件沒載入，下面的清單照樣能看。</div>';
+    return null;
+  }
+  if (HZMAP) return HZMAP;
+  HZMAP = L.map(el, { zoomControl: false, attributionControl: true, minZoom: 2, maxZoom: 14 }).setView([23.7, 121], 7);
+  HZMAP.attributionControl.setPrefix('');
+  L.control.zoom({ position: 'bottomleft' }).addTo(HZMAP);
+  const fc = L.control({ position: 'bottomright' });
+  fc.onAdd = () => {
+    const d = L.DomUtil.create('div', 'leaflet-control');
+    d.innerHTML = '<button type="button" id="hzFull" aria-label="全螢幕地圖" title="全螢幕">⛶</button>';
+    d.firstChild.addEventListener('click', () => toggleHzFull());
+    L.DomEvent.disableClickPropagation(d);
+    return d;
+  };
+  fc.addTo(HZMAP);
+  const hud = L.control({ position: 'topleft' });
+  hud.onAdd = () => {
+    const d = L.DomUtil.create('div', 'leaflet-control hz-hud');
+    d.id = 'hzHud'; d.hidden = true;
+    L.DomEvent.disableClickPropagation(d);          // 擋掉之後點擊不會冒到地圖，重播鈕的處理要掛在這裡
+    d.addEventListener('click', ev => { if (ev.target.closest('[data-hzplay]')) hzReplay(); });
+    return d;
+  };
+  hud.addTo(HZMAP);
+  HZMAP.createPane('landPane').style.zIndex = 350;
+  HZMAP.createPane('geoPane').style.zIndex = 420;
+  /* 預設戰情圖：離線也畫得出海岸線——大地震後網路最容易塞，圖磚載不出來時地圖不會一片黑 */
+  const bl = makeBaseLayers();
+  let bk = 'hud';
+  try { bk = localStorage.getItem(HZBASE_KEY) || 'hud'; } catch (e) {}
+  if (!BASEMAPS[bk]) bk = 'hud';
+  bl[BASEMAPS[bk].label].addTo(HZMAP);
+  L.control.layers(bl, null, { position: 'topright' }).addTo(HZMAP);
+  HZMAP.on('baselayerchange', e => { try { localStorage.setItem(HZBASE_KEY, e.layer._gpKey || 'hud'); } catch (err) {} });
+  // 上色那張圖是 <canvas>，用 ImageOverlay 的定位與縮放動畫，只把 <img> 換掉
+  const G = hzGrid();
+  if (G) {
+    const CanvasOverlay = L.ImageOverlay.extend({
+      _initImage() {
+        const c = this._image = this._url;
+        L.DomUtil.addClass(c, 'leaflet-image-layer');
+        if (this._zoomAnimated) L.DomUtil.addClass(c, 'leaflet-zoom-animated');
+        L.DomUtil.addClass(c, 'hz-fill');
+        c.onselectstart = L.Util.falseFn; c.onmousemove = L.Util.falseFn;
+      },
+    });
+    HZ_CV = document.createElement('canvas');
+    HZ_CV.width = G.W; HZ_CV.height = G.H;
+    HZ_OV = new CanvasOverlay(HZ_CV, G.bounds, { interactive: false }).addTo(HZMAP);
+  }
+  HZ_LG = L.layerGroup().addTo(HZMAP);
+  return HZMAP;
+}
+function toggleHzFull(on) {
+  const m = document.getElementById('hzMap');
+  if (!m) return;
+  const next = on == null ? !m.classList.contains('full') : !!on;
+  if (next === m.classList.contains('full')) return;
+  m.classList.toggle('full', next);
+  document.body.classList.toggle('cam-full', next);
+  document.body.style.overflow = next ? 'hidden' : '';
+  const b = document.getElementById('hzFull');
+  if (b) { b.textContent = next ? '✕' : '⛶'; b.title = next ? '離開全螢幕' : '全螢幕'; b.setAttribute('aria-label', b.title); }
+  setTimeout(() => HZMAP && HZMAP.invalidateSize(), 60);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') toggleHzFull(false); });
+const hzEpiIcon = () => L.divIcon({ className: '', iconSize: [28, 28], iconAnchor: [14, 14], html: '<div class="hz-epi"><i></i></div>' });
+function hzHud(html) {
+  const h = document.getElementById('hzHud');
+  if (!h) return;
+  h.hidden = !html;
+  h.innerHTML = html || '';
+}
+function hzMyPins() {
+  for (const s of camStations()) {
+    L.marker([s.lat, s.lng], { icon: stPin(s, typeOf(s.type)), zIndexOffset: 600, keyboard: false })
+      .bindTooltip(s.name, { direction: 'bottom', className: 'cam-sttip' }).addTo(HZ_LG);
+  }
+}
+// 地理上的圓（大圓距離）：海嘯波前要畫幾千公里，麥卡托上的正圓會歪得很離譜
+function geoCircle(c, km, n = 120) {
+  const out = [], a = km / R_E, la = rad(c.lat), lo = rad(c.lng);
+  for (let i = 0; i <= n; i++) {
+    const b = 2 * Math.PI * i / n;
+    const la2 = Math.asin(Math.sin(la) * Math.cos(a) + Math.cos(la) * Math.sin(a) * Math.cos(b));
+    let lo2 = deg(lo + Math.atan2(Math.sin(b) * Math.sin(a) * Math.cos(la), Math.cos(a) - Math.sin(la) * Math.sin(la2)));
+    while (lo2 - c.lng > 180) lo2 -= 360;
+    while (lo2 - c.lng < -180) lo2 += 360;
+    out.push([deg(la2), lo2]);
+  }
+  return out;
+}
+
+/* ── 動畫：一律用「震後第幾秒」算，畫面上寫的是真實秒數，播放速度另外標 ── */
+let HZ_AN = null;
+const HZ_REDUCE = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+function hzStop(finish) {
+  if (!HZ_AN) return;
+  cancelAnimationFrame(HZ_AN.raf);
+  const a = HZ_AN;
+  HZ_AN = null;
+  if (finish) a.frame(a.end, true);
+}
+function hzRun(frame, end, speed, label) {
+  hzStop(false);
+  const a = { frame, end, raf: 0 };
+  if (HZ_REDUCE()) { frame(end, true); return; }
+  const t0 = performance.now();
+  const tick = now => {
+    if (HZ_AN !== a) return;
+    const tau = (now - t0) / 1000 * speed;
+    if (tau >= end) { HZ_AN = null; frame(end, true); return; }
+    frame(tau, false);
+    a.raf = requestAnimationFrame(tick);
+  };
+  HZ_AN = a;
+  frame(0, false);
+  a.raf = requestAnimationFrame(tick);
+}
+// 重播：整張重畫（上色要從震央重新一圈一圈塗出去）
+function hzReplay() {
+  const p = HZ_EQ_PARTS;
+  if (p && p.e) hzDrawEq(p.e, true);
+  else if (p && p.r) hzDrawTsu(p.r, true);
+}
+function hzReplayBtn(what) { return `<button type="button" data-hzplay="${what}">▶ 重播</button>`; }
+const hzMin = ms => { const m = Math.ceil(ms / 60e3); return m < 60 ? `${m} 分` : `${Math.floor(m / 60)} 時 ${m % 60} 分`; };
+const hzSec = s => s < 120 ? `${Math.round(s)} 秒` : s < 7200 ? `${Math.floor(s / 60)} 分 ${p2(Math.round(s % 60))} 秒` : `${Math.floor(s / 3600)} 時 ${p2(Math.round(s / 60 % 60))} 分`;
+
+/* 地震：P 波（虛線）、S 波（實線）從震央往外擴；S 波掃過的測站跳出官方實測震度，
+   鄉鎮依測站實測上色（深）、沒有測站的依縣市最大震度（淺）。 */
+let HZ_EQ_PARTS = null;
+function hzDrawEq(e, animate) {
+  const map = hzEnsureMap();
+  hzStop(false);
+  if (!map || !e) { if (HZ_LG) HZ_LG.clearLayers(); hzPaintStart(null); hzHud(''); return; }
+  HZ_LG.clearLayers();
+  const epi = { lat: e.lat, lng: e.lng };
+  L.marker([e.lat, e.lng], { icon: hzEpiIcon(), zIndexOffset: 1000, keyboard: false, interactive: false }).addTo(HZ_LG);
+  const pr = L.circle([e.lat, e.lng], { radius: 1, color: '#6FD3FF', weight: 1.5, dashArray: '6 6', fill: false, interactive: false }).addTo(HZ_LG);
+  const sr = L.circle([e.lat, e.lng], { radius: 1, color: '#FF8A3D', weight: 2.5, fillColor: '#FF8A3D', fillOpacity: 0.06, interactive: false }).addTo(HZ_LG);
+  const sts = e.st.map(s => {
+    const m = L.marker([s.lat, s.lng], { keyboard: false, zIndexOffset: 400 + s.lv * 10, icon: L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+      html: `<div class="hz-st" style="--c:${INT_COL[s.lv]};--tc:${intFg(s.lv)}">${INT_SH[s.lv]}</div>` }) })
+      .bindTooltip(`${esc(s.name)}　${INT_TXT[s.lv]}（實測）`, { direction: 'top', className: 'cam-sttip' }).addTo(HZ_LG);
+    return { m, d: s.d, on: false };
+  });
+  hzMyPins();
+  // 上色：測站所在鄉鎮（官方實測、深）；同縣市其他鄉鎮用縣市最大震度（官方、淺）
+  const townLv = new Map(), cty = {};
+  for (const s of e.st) { const k = regionIdx(s.lat, s.lng); if (k >= 0 && s.lv > (townLv.get(k) ?? -1)) townLv.set(k, s.lv); }
+  for (const a of e.areas) cty[a.c] = a.lv;
+  const towns = REGION ? REGION.d.towns : [];
+  const cells = e.src === 'cwa' && REGION ? hzCells((k, land) => {
+    if (!land) return 0;
+    const tl = townLv.get(k);
+    if (tl >= 1) return hzRGBA(INT_COL[tl], 0.6);
+    const cl = cty[towns[k][0]];
+    return cl >= 1 ? hzRGBA(INT_COL[cl], 0.2) : 0;
+  }, epi) : null;
+  hzPaintStart(cells);
+  const maxD = Math.max(60, ...e.st.map(s => s.d)) + 25;
+  const sAt = km => Math.hypot(km, e.depth) / HZ_VS;          // 震央距離 km 的地方，S 波幾秒後到
+  const end = sAt(maxD), speed = clamp(Math.round(end / 8), 3, 40);
+  const rad2 = (v, tau) => Math.sqrt(Math.max(0, (v * tau) ** 2 - e.depth ** 2));
+  const frame = (tau, done) => {
+    const rs = rad2(HZ_VS, tau), rp = rad2(HZ_VP, tau);
+    pr.setRadius(done ? 1 : rp * 1000); sr.setRadius(done ? 1 : rs * 1000);
+    pr.setStyle({ opacity: done ? 0 : 1 }); sr.setStyle({ opacity: done ? 0 : 1, fillOpacity: done ? 0 : 0.06 });
+    for (const s of sts) if (!s.on && (done || s.d <= rs)) { s.on = true; const el = s.m.getElement(); if (el && el.firstChild) el.firstChild.classList.add('on'); }
+    hzPaintTo(done ? Infinity : rs);
+    hzHud(done ? `${e.src === 'cwa' ? `S 波約 ${Math.round(end)} 秒掃過全部測站` : '震央'}　${hzReplayBtn('eq')}`
+      : `震後 <b>${hzSec(tau)}</b>　S 波 ${Math.round(rs)} km　×${speed}（示意）`);
+  };
+  HZ_EQ_PARTS = { e };
+  // 框：震央＋有感測站；國外地震只看震央
+  const pts = [[e.lat, e.lng], ...e.st.filter(s => s.lv >= 1).map(s => [s.lat, s.lng])];
+  if (pts.length > 1) map.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 10 });
+  else map.setView([e.lat, e.lng], HZ_TWBOX(e) ? 8 : 4);
+  if (animate && (e.src === 'cwa' || HZ_TWBOX(e))) hzRun(frame, end, speed); else frame(end, true);
+}
+
+/* 海嘯：震央、波前（速度依官方預估到達時間換算，示意）、沿海分區依官方燈號上色、潮位站實測浪高 */
+let HZ_TSU_PT = null;
+function tsuAreaPoints() {
+  if (HZ_TSU_PT || !REGION) return HZ_TSU_PT;
+  const d = REGION.d, acc = {};
+  for (let j = 0; j < d.ny; j++) for (let i = 0; i < d.nx; i++) {
+    const v = REGION.g[j * d.nx + i];
+    if (v > -2) continue;
+    const [c, t] = d.towns[-v - 2], n = tsuAreaOf(c, t);
+    if (!n) continue;
+    const a = acc[n] || (acc[n] = [0, 0, 0]);
+    a[0] += d.lat0 + (j + 0.5) * d.d; a[1] += d.lng0 + (i + 0.5) * d.d; a[2]++;
+  }
+  HZ_TSU_PT = {};
+  for (const [n, a] of Object.entries(acc)) HZ_TSU_PT[n] = { lat: a[0] / a[2], lng: a[1] / a[2] };
+  return HZ_TSU_PT;
+}
+function hzDrawTsu(r, animate) {
+  const map = hzEnsureMap();
+  hzStop(false);
+  if (!map || !r) { if (HZ_LG) HZ_LG.clearLayers(); hzPaintStart(null); hzHud(''); return; }
+  HZ_LG.clearLayers();
+  const src = r.eq, has = Number.isFinite(src.lat) && Number.isFinite(src.lng) && !(src.lat === 0 && src.lng === 0);
+  if (has) L.marker([src.lat, src.lng], { icon: hzEpiIcon(), zIndexOffset: 1000, keyboard: false, interactive: false }).addTo(HZ_LG);
+  for (const s of r.obs) if (s.lat && s.lng) {
+    L.marker([s.lat, s.lng], { keyboard: false, zIndexOffset: 500, icon: L.divIcon({ className: 'hz-lbw', iconSize: [80, 18], iconAnchor: [40, 9],
+      html: `<div class="hz-tide">${esc(s.h)}</div>` }) }).bindTooltip(`${esc(s.name)}　${s.t ? fmtClock(s.t) + ' 到達' : ''}　${esc(s.h)}（實測）`,
+      { direction: 'top', className: 'cam-sttip' }).addTo(HZ_LG);
+  }
+  hzMyPins();
+  const byArea = {};
+  for (const a of r.areas) byArea[a.name] = a;
+  const towns = REGION ? REGION.d.towns : [];
+  const cells = REGION && r.areas.length ? hzCells((k, land) => {
+    if (land) return 0;
+    const a = byArea[tsuAreaOf(towns[k][0], towns[k][1])];
+    return a ? hzRGBA(tsuCol(a.color), 0.85) : 0;
+  }, has ? src : null, true) : null;
+  hzPaintStart(cells);
+  // 波速：拿每個分區「震央到那段海岸的距離 ÷ 官方預估到達時間」的中位數，讓波前剛好在官方時間碰到海岸
+  const pt = tsuAreaPoints() || {}, vs = [];
+  if (has && src.t) for (const a of r.areas) {
+    const p = pt[a.name], h = (a.t - src.t) / 3600e3;
+    if (p && h > 0.05) vs.push(distKm(src, p) / h);
+  }
+  vs.sort((a, b) => a - b);
+  const kmh = vs.length ? clamp(vs[vs.length >> 1], 200, 950) : HZ_TSU_KMH;
+  const twD = has ? distKm(src, { lat: 23.7, lng: 121 }) : 0;
+  const endKm = Math.max(300, twD + 250), end = endKm / kmh * 3600, speed = Math.max(60, Math.round(end / 9));
+  const ring = has ? L.polyline(geoCircle(src, 1), { color: '#29C5E6', weight: 2.5, opacity: 0.9, interactive: false }).addTo(HZ_LG) : null;
+  const tw = L.latLngBounds([[21.8, 119.3], [25.4, 122.1]]), far = twD > 900;
+  const frame = (tau, done) => {
+    const km = kmh * tau / 3600;
+    if (ring) { ring.setLatLngs(geoCircle(src, Math.max(1, Math.min(km, 19000)))); ring.setStyle({ opacity: done ? 0 : 0.9 }); }
+    hzPaintTo(done || !has ? Infinity : km);
+    hzHud(!has ? '' : done ? `${far ? `震央 ${Math.round(twD).toLocaleString()} km 外` : '震央'}${r.areas.length ? '・海岸依官方燈號' : ''}　${hzReplayBtn('tsu')}`
+      : `震後 <b>${hzSec(tau)}</b>　波前 ${Math.round(km).toLocaleString()} km（示意）`);
+    // 遠地海嘯：播的時候看整片海，播完拉回臺灣——海岸那一圈顏色在整個太平洋的比例尺下看不到
+    // 不用動畫：前一段縮放動畫還沒跑完時，有動畫的 fitBounds 會被它蓋回去（重播後實測停在整片太平洋）
+    if (done && far && r.areas.length) map.fitBounds(tw, { animate: false });
+  };
+  HZ_EQ_PARTS = { r };
+  if (has && (animate || !r.areas.length)) map.fitBounds(L.latLngBounds(tw.getSouthWest(), tw.getNorthEast()).extend([src.lat, src.lng]).pad(0.1), { maxZoom: 8, animate: false });
+  else map.fitBounds(tw, { animate: false });
+  if (animate && has) hzRun(frame, end, speed); else frame(end, true);
+}
+
+/* 示警：生效中的每一則把範圍內的鄉鎮塗上類別色；點了哪一則就加深、框過去 */
+function hzDrawCap(list, sel) {
+  const map = hzEnsureMap();
+  hzStop(false);
+  if (!map) return;
+  HZ_LG.clearLayers();
+  hzHud('');
+  hzMyPins();
+  const own = new Map();                    // 鄉鎮 → 最優先的那一則（清單已照重要性排好）
+  list.forEach((a, i) => (a.towns || []).forEach(k => { if (!own.has(k)) own.set(k, i); }));
+  const selSet = new Set(sel >= 0 && list[sel] ? list[sel].towns || [] : []);
+  hzPaintStart(REGION ? hzCells((k, land) => {
+    if (!land) return 0;
+    if (selSet.has(k)) return hzRGBA(capCol(list[sel].cat), 0.7);
+    const i = own.get(k);
+    return i == null ? 0 : hzRGBA(capCol(list[i].cat), sel >= 0 ? 0.12 : 0.4);
+  }) : null);
+  hzPaintTo(Infinity);
+  const G = hzGrid(), pts = G ? [...selSet].map(k => G.ctr[k]).filter(Boolean) : [];
+  // 選了一則：範圍內的鄉鎮標名字（戰情圖底圖沒有鄉鎮名，不標看不出塗的是哪裡）；太多就不標，免得疊成一片
+  if (pts.length && pts.length <= 15) [...selSet].forEach(k => G.ctr[k] && L.marker(G.ctr[k], { interactive: false, keyboard: false,
+    icon: L.divIcon({ className: '', iconSize: [80, 16], iconAnchor: [40, 8], html: `<div class="hz-tn">${esc(REGION.d.towns[k][1])}</div>` }) }).addTo(HZ_LG));
+  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: 10 });
+  else map.fitBounds([[21.8, 119.3], [25.4, 122.1]]);
+}
+
+/* ── 資料來源 ─────────────────────────────────────────── */
+const HZ_LAST = { usgs: 0, cwa: 0, file: 0, ncdr: 0 };
+let HZ_BUSY = false, HZ_T = 0;
+const hzPaneOn = () => { const p = document.getElementById('p-hz'); return !!(p && p.classList.contains('on')); };
+async function hzLoadFile() {
+  HZ_LAST.file = Date.now();
+  try {
+    const j = await getJSON(new URL(HZ_FILE, location.href).href, 12000, { cache: 'no-cache' });
+    if (!j || j.v !== 1) throw new Error('格式不對');
+    HZ_RAW.fileEq = toArr(j.eq).map(r => hzEqFromCwa(r)).filter(Boolean);
+    HZ_RAW.fileTsu = toArr(j.tsu).map(hzTsuFromCwa).filter(Boolean);
+    HZ_RAW.fileCap = { at: hzTime((j.cap || {}).fetched), list: toArr((j.cap || {}).entries).map(capFrom) };
+    Object.assign(HZ_ST.file, { at: Date.now(), err: '', upd: hzTime(j.updated), hasKey: !!j.hasKey, srcErr: j.err || {} });
+  } catch (e) {
+    HZ_ST.file.err = /HTTP 404/.test(e && e.message) ? '後端還沒產生' : ((e && e.message) || String(e));
+  }
+}
+async function hzLoadUsgs() {
+  HZ_LAST.usgs = Date.now();
+  try {
+    const j = await getJSON(USGS_FEED, 12000);
+    HZ_RAW.usgs = toArr(j && j.features).map(hzEqFromUsgs).filter(Boolean);
+    Object.assign(HZ_ST.usgs, { at: Date.now(), err: '' });
+  } catch (e) {
+    HZ_ST.usgs.err = e && e.name === 'AbortError' ? '12 秒沒有回應' : e instanceof TypeError ? '連不上（沒網路或被擋）' : ((e && e.message) || '連不上');
+  }
+}
+async function hzLoadCwa(key) {
+  HZ_LAST.cwa = Date.now();
+  const errs = [];
+  // 依序打，不一次三個：氣象署開放資料對同一把授權碼有流量限制
+  try {
+    const a = await cwaJson('E-A0015-001', key, { limit: 6 });
+    const b = await cwaJson('E-A0016-001', key, { limit: 6 });
+    HZ_RAW.liveEq = [...toArr((a.records || {}).Earthquake).map(r => hzEqFromCwa(r, false)),
+      ...toArr((b.records || {}).Earthquake).map(r => hzEqFromCwa(r, true))].filter(Boolean);
+  } catch (e) { errs.push('地震：' + ((e && e.message) || e)); }
+  try {
+    const c = await cwaJson('E-A0014-001', key, { limit: 8 });
+    HZ_RAW.liveTsu = toArr((c.records || {}).Tsunami).map(hzTsuFromCwa).filter(Boolean);
+  } catch (e) { errs.push('海嘯：' + ((e && e.message) || e)); }
+  HZ_ST.cwa.err = errs.join('；');
+  if (errs.length < 2) HZ_ST.cwa.at = Date.now();
+}
+async function hzLoadNcdr() {
+  HZ_LAST.ncdr = Date.now();
+  const proxy = DB.cfg.dgpaProxy === undefined ? DGPA_PROXY_DEFAULT : String(DB.cfg.dgpaProxy || '');
+  if (!proxy) { HZ_ST.ncdr.err = '沒有設定轉發服務'; return; }
+  try {
+    const j = await getJSON(proxy + encodeURIComponent(NCDR_FEED), 15000);
+    const ents = toArr(j && j.entry);
+    if (!ents.length && !(j && j.id)) throw new Error('回應看不懂');
+    HZ_RAW.cap = { at: Date.now(), list: ents.map(capFrom) };
+    HZ_RAW.capLive = true;
+    Object.assign(HZ_ST.ncdr, { at: Date.now(), err: '' });
+  } catch (e) {
+    HZ_ST.ncdr.err = e && e.name === 'AbortError' ? '15 秒沒有回應' : e instanceof TypeError ? '連不上轉發服務' : ((e && e.message) || String(e));
+  }
+}
+async function hzRefresh(force) {
+  if (HZ_BUSY) return;
+  HZ_BUSY = true;
+  const now = Date.now(), on = hzPaneOn(), key = String(DB.cfg.cwaKey || '').trim();
+  try {
+    if (force || now - HZ_LAST.file > 10 * 60e3) await hzLoadFile();
+    if (force || now - HZ_LAST.usgs > (on ? 55e3 : 170e3)) await hzLoadUsgs();
+    if (key && (force || now - HZ_LAST.cwa > (on ? 110e3 : 290e3))) await hzLoadCwa(key);
+    // 示警清單 150 KB、平台限 3 秒一次：在這頁才每 3 分鐘抓，不在這頁 15 分鐘一次
+    if (force || now - HZ_LAST.ncdr > (on ? 170e3 : 890e3)) await hzLoadNcdr();
+  } finally { HZ_BUSY = false; }
+  hzRebuild();
+}
+function hzSchedule() {
+  clearTimeout(HZ_T);
+  HZ_T = setTimeout(async () => { if (!document.hidden) await hzRefresh(false); hzSchedule(); }, hzPaneOn() ? 60e3 : 180e3);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) hzRefresh(false); else hzStop(true); });
+
+/* 合併：氣象署報告為主；USGS 跟氣象署是同一個地震（2 分鐘內、150 km 內）就只掛連結，
+   氣象署還沒報的臺灣附近地震與國外規模 6 以上的才單獨列 */
+function hzRebuild() {
+  const by = new Map();
+  for (const e of [...HZ_RAW.liveEq, ...HZ_RAW.fileEq]) if (e && !by.has(e.id)) by.set(e.id, e);
+  const cwa = [...by.values()], out = [...cwa];
+  for (const u of HZ_RAW.usgs) {
+    const m = cwa.find(c => Math.abs(c.t - u.t) <= 120e3 && distKm(c, u) <= 150);
+    if (m) { m.usgs = u.web; continue; }
+    if (HZ_TWBOX(u) || u.mag >= 6) out.push(u);
+  }
+  const old = Date.now() - 45 * 86400e3;
+  HZ_EQ = out.filter(e => e.t >= old).sort((a, b) => b.t - a.t);
+  // 海嘯：同一個事件（海嘯編號）的各報放一起，最新一報代表這個事件
+  const tby = new Map();
+  for (const r of [...(HZ_RAW.liveTsu || []), ...HZ_RAW.fileTsu]) if (!tby.has(r.id)) tby.set(r.id, r);
+  const ev = new Map();
+  for (const r of tby.values()) { const a = ev.get(r.no) || []; a.push(r); ev.set(r.no, a); }
+  HZ_TSU = [...ev.values()].map(rs => rs.sort((a, b) => b.issued - a.issued || b.rn - a.rn)).map(rs => ({ no: rs[0].no, reps: rs, last: rs[0] }))
+    .sort((a, b) => b.last.issued - a.last.issued);
+  const capSrc = HZ_RAW.cap && (!HZ_RAW.fileCap || HZ_RAW.cap.at >= HZ_RAW.fileCap.at) ? HZ_RAW.cap : HZ_RAW.fileCap;
+  HZ_CAP = capSrc ? capActive(capSrc.list).map(a => ({ ...a, towns: hzTownsOf(a.text) })) : [];
+  HZ_RAW.capUsed = capSrc === HZ_RAW.cap ? 'live' : capSrc ? 'file' : '';
+  hzNotify();
+  hzBadge();
+  hzTopBar();
+  if (hzPaneOn()) renderHz(false);
+}
+
+/* ── 重要的新事件：導覽紅點、各頁上方的提示條、開著 App 時跳提示 ──
+   地震：臺灣附近（氣象署報告或 USGS 臺灣範圍）最大震度 3 級以上或規模 5 以上；海嘯：還在有效期間的消息、警訊、警報 */
+const hzImportantEq = e => (e.src === 'cwa' || HZ_TWBOX(e)) && (e.max >= 3 || e.mag >= 5);
+function hzImportant() {
+  return [...HZ_EQ.filter(hzImportantEq).map(e => ({ id: e.id, t: e.t, txt: hzEqLine(e) })),
+    ...HZ_TSU.filter(v => tsuActive(v.last)).map(v => ({ id: 't' + v.last.id, t: v.last.issued, txt: `${v.last.type} ${v.last.eq.loc}` }))];
+}
+function hzNotify() {
+  const imp = hzImportant();
+  if (!HZ_KNOWN) { HZ_KNOWN = new Set(imp.map(x => x.id)); return; }
+  const fresh = imp.filter(x => !HZ_KNOWN.has(x.id) && x.t > Date.now() - 3 * 3600e3);
+  imp.forEach(x => HZ_KNOWN.add(x.id));
+  if (fresh.length) toast('示警：' + fresh[0].txt);
+}
+function hzBadge() {
+  const dot = document.getElementById('navDotHz');
+  if (!dot) return;
+  const n = hzImportant().filter(x => x.t > HZ_SEEN && x.t > Date.now() - 24 * 3600e3).length;
+  dot.hidden = !n || hzPaneOn();
+  dot.textContent = n > 9 ? '9+' : String(n);
+}
+// 各頁上方：生效中的海嘯警訊／警報，或 1 小時內站臺所在縣市 4 級以上的地震——值班時不能只靠紅點
+function hzTopBar() {
+  const bar = document.getElementById('hzTop');
+  if (!bar) return;
+  const tsu = HZ_TSU.find(v => tsuLevel(v.last) >= 2 && tsuActive(v.last));
+  const mine = new Set(camStations().map(s => (regionOf(s.lat, s.lng) || [])[0]).filter(Boolean));
+  const eq = HZ_EQ.find(e => e.src === 'cwa' && e.t > Date.now() - 3600e3 && e.areas.some(a => a.lv >= 4 && mine.has(a.c)));
+  const html = tsu ? `<b>${esc(tsu.last.type)}</b>${esc(tsu.last.eq.loc)}　規模 ${tsu.last.eq.mag || '—'}　${tsu.last.areas.length ? `最快 ${fmtClock(tsu.last.areas[0].t)} 到達` : ''}`
+    : eq ? `<b>地震</b>${esc(eq.where)} 規模 ${eq.mag}　站臺縣市最大 ${INT_TXT[Math.max(...eq.areas.filter(a => mine.has(a.c)).map(a => a.lv))]}` : '';
+  bar.hidden = !html || hzPaneOn();
+  bar.className = 'hz-top' + (tsu && tsuLevel(tsu.last) < 3 ? ' w' : '');
+  bar.innerHTML = html ? `${html}<span class="act">看示警 ›</span>` : '';
+  bar.dataset.go = tsu ? 'tsu' : 'eq';
+}
+
+/* ── 畫面 ─────────────────────────────────────────────── */
+const hzEqLine = e => `${e.where || e.loc} 規模 ${e.mag.toFixed(1)}${e.max >= 1 ? `，最大震度 ${INT_TXT[e.max]}` : ''}`;
+const hzInt = (lv, sm) => lv >= 0 ? `<span class="hz-int${sm ? ' sm' : ''}" style="--c:${INT_COL[lv]};--tc:${intFg(lv)}">${INT_TXT[lv]}</span>`
+  : `<span class="hz-int na${sm ? ' sm' : ''}">無震度</span>`;
+const hzAgo = t => { const m = Math.round((Date.now() - t) / 60e3); return m < 1 ? '剛剛' : m < 60 ? `${m} 分鐘前` : m < 1440 ? `${Math.round(m / 60)} 小時前` : fmtShort(t); };
+function hzEqList() { return HZ_EQ.filter(e => HZ_EQF === 'all' || e.src === 'cwa' || HZ_TWBOX(e)); }
+// 我的站臺：最近的氣象署測站實測（25 km 內）、所在縣市的最大震度、S 波大概幾秒後到（推估）
+function hzMine(e) {
+  const rows = camStations().map(s => {
+    const dk = distKm(e, s), near = e.st.map(x => ({ x, k: distKm(s, x) })).sort((a, b) => a.k - b.k)[0];
+    const c = (regionOf(s.lat, s.lng) || [])[0], ca = e.areas.find(a => a.c === c);
+    return { s, dk, ts: Math.hypot(dk, e.depth) / HZ_VS, obs: near && near.k <= 25 ? near : null, ca };
+  }).filter(r => r.dk <= 400);
+  if (!rows.length) return '';
+  rows.sort((a, b) => ((b.obs ? b.obs.x.lv : b.ca ? b.ca.lv - 0.5 : -1) - (a.obs ? a.obs.x.lv : a.ca ? a.ca.lv - 0.5 : -1)) || a.dk - b.dk);
+  return `<div class="hz-mine"><h3>我的站臺</h3>${rows.slice(0, 10).map(r => `<div class="hz-me">
+      <b>${esc(r.s.name)}</b>
+      <span>${r.obs ? `${hzInt(r.obs.x.lv, true)}<small>實測｜${esc(r.obs.x.name)}測站 ${r.obs.k < 1 ? '<1' : r.obs.k.toFixed(0)} km</small>`
+        : r.ca ? `${hzInt(r.ca.lv, true)}<small>縣市最大（官方）｜附近沒有測站報告</small>`
+        : `<small>${e.src === 'cwa' ? '附近測站沒有報告（多半沒感覺）' : '國外機構沒有臺灣的震度'}</small>`}</span>
+      <small class="hz-est">距震央 ${r.dk.toFixed(0)} km・S 波約震後 ${Math.round(r.ts)} 秒到（推估）</small></div>`).join('')}</div>`;
+}
+function hzEqView() {
+  const list = hzEqList();
+  let e = list.find(x => x.id === HZ_SEL.eq);
+  if (!e) { e = list[0]; HZ_SEL.eq = e ? e.id : ''; }
+  const sel = `<label class="wy-sel"><span>範圍</span><select id="hzEqF"><option value="tw"${HZ_EQF === 'tw' ? ' selected' : ''}>臺灣附近</option>
+    <option value="all"${HZ_EQF === 'all' ? ' selected' : ''}>含國外規模 6 以上</option></select></label>`;
+  // 試過就不能一直寫「載入中」：全部失敗時原因在最下面的來源列
+  if (!e) return `<div class="msg i">${HZ_LAST.file && HZ_LAST.usgs && !HZ_BUSY ? '最近 45 天沒有地震資料。' : '載入地震資料…'}</div>${sel}`;
+  const links = [e.web && [e.src === 'cwa' ? '氣象署報告' : 'USGS 頁面', e.web], e.img && ['報告圖', e.img], e.shake && ['等震度圖', e.shake], e.usgs && ['USGS', e.usgs]]
+    .filter(Boolean).map(([t, u]) => `<a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">${t} ↗</a>`).join('');
+  const d = new Date(e.t);
+  return `<div class="card pad hz-card">
+      <div class="hz-h"><b class="hz-m">M${e.mag.toFixed(1)}</b><div class="hz-w"><b>${esc(e.where || e.loc)}</b>
+        <small>${fmtShort(e.t)}:${p2(d.getSeconds())}・深 ${e.depth.toFixed(e.depth < 10 ? 1 : 0)} km・${hzAgo(e.t)}</small></div>${hzInt(e.max)}</div>
+      ${e.src === 'cwa' ? `<p class="hz-loc">${esc(e.loc)}　<small>${e.small ? '小區域有感地震' : `第 ${esc(e.no)} 號`}・中央氣象署</small></p>`
+        : `<p class="msg w" style="margin:0.5rem 0 0">美國地質調查所（USGS）的速報：規模算法跟氣象署不同、沒有臺灣各地震度。${HZ_TWBOX(e) ? '氣象署報告出來後會換成官方資料。' : ''}</p>`}
+      ${e.areas.length ? `<div class="hz-areas">${e.areas.map(a => `<span class="hz-ar" style="--c:${INT_COL[a.lv]};--tc:${intFg(a.lv)}">${esc(a.c)}<b>${INT_TXT[a.lv]}</b></span>`).join('')}</div>` : ''}
+      ${hzMine(e)}
+      ${links ? `<div class="btnrow" style="margin-top:0.625rem">${links}</div>` : ''}
+    </div>
+    <div class="sec"><h2>最近地震</h2></div>${sel}
+    <div class="hz-list">${list.slice(0, 40).map(x => `<button type="button" class="hz-row" data-eq="${esc(x.id)}" aria-current="${x.id === e.id}">
+      ${hzInt(x.max, true)}<span class="hz-rt"><b>M${x.mag.toFixed(1)}　${esc(x.where || x.loc)}</b>
+      <small>${fmtShort(x.t)}・深 ${x.depth.toFixed(0)} km${x.src === 'usgs' ? '・USGS' : x.small ? '・小區域' : ''}</small></span></button>`).join('')}</div>`;
+}
+function hzTsuView() {
+  const act = HZ_TSU.filter(v => tsuActive(v.last));
+  let v = HZ_TSU.find(x => x.no === HZ_SEL.tsu) || act[0] || HZ_TSU[0];
+  HZ_SEL.tsu = v ? v.no : '';
+  const now = Date.now();
+  const card = r => {
+    const lv = tsuLevel(r);
+    return `<div class="card pad hz-card hz-tsu l${lv}" style="--c:${tsuCol(r.color)}">
+      <div class="hz-h"><b class="hz-tt">${esc(r.type)}</b><div class="hz-w"><b>${esc(r.eq.loc)}　規模 ${r.eq.mag || '—'}</b>
+        <small>第 ${r.rn} 報・${fmtShort(r.issued)} 發布${r.until ? `・有效到 ${fmtShort(r.until)}` : ''}</small></div></div>
+      <p class="hz-txt">${esc(r.text)}</p>
+      ${r.areas.length ? `<table class="hz-tb"><thead><tr><th>沿海分區</th><th>預估到達</th><th>浪高</th></tr></thead><tbody>${r.areas.map(a => `<tr style="--c:${tsuCol(a.color)}">
+        <td><b>${esc(a.name)}</b><small>${esc(a.desc)}</small></td>
+        <td>${a.t ? `${fmtClock(a.t)}<small>${a.t > now ? `還有 ${hzMin(a.t - now)}` : '已過預估時間'}</small>` : '—'}</td><td>${esc(a.h)}</td></tr>`).join('')}</tbody></table>
+        <p class="hint">預估到達、浪高是氣象署的預報；沿海分區依說明對到鄉鎮海岸（地圖上色）。</p>` : ''}
+      ${r.obs.length ? `<table class="hz-tb"><thead><tr><th>潮位站（實測）</th><th>到達</th><th>浪高</th></tr></thead><tbody>${r.obs.map(s => `<tr>
+        <td><b>${esc(s.name)}</b></td><td>${s.t ? fmtClock(s.t) : '—'}</td><td>${esc(s.h)}</td></tr>`).join('')}</tbody></table>` : ''}
+      ${r.web ? `<div class="btnrow" style="margin-top:0.625rem"><a class="btn sm" href="${esc(r.web)}" target="_blank" rel="noopener">氣象署海嘯資訊 ↗</a></div>` : ''}
+    </div>`;
+  };
+  const noKey = !String(DB.cfg.cwaKey || '').trim();
+  return `${act.length ? '' : `<div class="msg i">目前沒有海嘯警報、警訊。${noKey && HZ_ST.file.upd ? `（後端資料 ${fmtShort(HZ_ST.file.upd)}；填個人授權碼可即時）` : ''}</div>`}
+    ${v ? card(v.last) : '<div class="msg i">還沒有海嘯資料。</div>'}
+    ${v && v.reps.length > 1 ? `<details class="card pad fold" style="margin-top:0.625rem"><summary>這個事件的各報（${v.reps.length}）</summary>
+      ${v.reps.map(r => `<p class="hz-rep"><b style="color:${tsuCol(r.color)}">${esc(r.type)} 第 ${r.rn} 報</b>　${fmtShort(r.issued)}<br>${esc(r.text)}</p>`).join('')}</details>` : ''}
+    <div class="sec"><h2>最近海嘯事件</h2></div>
+    <div class="hz-list">${HZ_TSU.slice(0, 20).map(x => `<button type="button" class="hz-row" data-tsu="${esc(x.no)}" aria-current="${v && x.no === v.no}">
+      <span class="hz-int sm" style="--c:${tsuCol(x.last.color)};--tc:#08131A">${esc(x.last.type.replace('海嘯', '') || '消息')}</span>
+      <span class="hz-rt"><b>${esc(x.last.eq.loc)}　規模 ${x.last.eq.mag || '—'}</b><small>${fmtShort(x.last.eq.t || x.last.issued)}・共 ${x.reps.length} 報</small></span></button>`).join('')}</div>`;
+}
+function hzCapView() {
+  const mine = new Set(camStations().map(s => regionIdx(s.lat, s.lng)).filter(k => k >= 0));
+  const cats = {};
+  HZ_CAP.forEach(a => { cats[a.cat] = (cats[a.cat] || 0) + 1; });
+  if (HZ_CAPF && HZ_CAPF !== 'mine' && !cats[HZ_CAPF]) HZ_CAPF = '';
+  const list = HZ_CAP.map((a, i) => ({ a, i, me: (a.towns || []).some(k => mine.has(k)) }))
+    .filter(x => !HZ_CAPF || (HZ_CAPF === 'mine' ? x.me : x.a.cat === HZ_CAPF));
+  const opt = [['', `全部（${HZ_CAP.length}）`], ...(mine.size ? [['mine', '影響我的站臺']] : []),
+    ...Object.entries(cats).sort((a, b) => capRank(a[0]) - capRank(b[0])).map(([c, n]) => [c, `${c}（${n}）`])];
+  return `<label class="wy-sel"><span>類別</span><select id="hzCapF">${opt.map(([v, l]) => `<option value="${esc(v)}"${HZ_CAPF === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+    ${HZ_CAP.length ? '' : `<div class="msg i">${HZ_RAW.capUsed ? '目前沒有生效中的示警。' : '示警清單還沒拿到（原因寫在最下面）。'}</div>`}
+    <div class="hz-list">${list.map(({ a, i, me }) => `<button type="button" class="hz-cap" data-cap="${i}" aria-current="${i === HZ_SEL.cap}" style="--c:${capCol(a.cat)}">
+      <span class="hz-cat">${esc(a.cat)}</span>${me ? '<span class="hz-me-t">影響我的站臺</span>' : ''}
+      <span class="hz-ct">${esc(a.text)}</span>
+      <small>${esc(a.author)}・${a.eff ? fmtShort(a.eff) : fmtShort(a.upd)} 起${a.exp ? `・到 ${fmtShort(a.exp)}` : ''}${(a.towns || []).length ? '' : '・地圖上找不到範圍'}</small></button>`).join('')}</div>`;
+}
+function hzSrcLine() {
+  const k = String(DB.cfg.cwaKey || '').trim(), s = HZ_ST, out = [];
+  out.push(k ? (s.cwa.at ? `氣象署：即時（你的授權碼）${fmtClock(s.cwa.at)}${s.cwa.err ? `，部分沒抓到（${esc(s.cwa.err)}）` : ''}`
+    : s.cwa.err ? `氣象署直連失敗（${esc(s.cwa.err)}），改用後端` : '氣象署：連線中…')
+    : `氣象署：後端 ${s.file.upd ? fmtShort(s.file.upd) : '還沒產生'}（排程 1～6 小時一次；到「設定 › 資料來源」填個人授權碼就即時）`);
+  out.push(s.usgs.at ? `USGS：${fmtClock(s.usgs.at)} 更新` : s.usgs.err ? `USGS 抓不到（${esc(s.usgs.err)}）` : 'USGS：連線中…');
+  const capAt = HZ_RAW.capUsed === 'live' ? HZ_RAW.cap.at : HZ_RAW.fileCap ? HZ_RAW.fileCap.at : 0;
+  out.push(HZ_RAW.capUsed === 'live' ? `示警：即時（經轉發服務）${fmtClock(capAt)}`
+    : HZ_RAW.capUsed === 'file' ? `示警：後端 ${capAt ? fmtShort(capAt) : ''}${s.ncdr.err ? `（即時抓不到：${esc(s.ncdr.err)}）` : ''}`
+    : `示警抓不到（即時：${esc(s.ncdr.err || '連線中…')}；後端：${esc(s.file.err || '沒有這段')}）`);
+  return out.join('<br>');
+}
+function renderHz(redraw) {
+  const body = document.getElementById('hzBody');
+  if (!body) return;
+  $$('#hzSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.hz === HZ_SEG)));
+  $$('#hzSeg [data-n]').forEach(i => {
+    const n = i.dataset.n === 'tsu' ? HZ_TSU.filter(v => tsuActive(v.last)).length : HZ_CAP.length;
+    i.hidden = !n; i.textContent = n;
+  });
+  const y = window.scrollY;
+  body.innerHTML = HZ_SEG === 'tsu' ? hzTsuView() : HZ_SEG === 'cap' ? hzCapView() : hzEqView();
+  window.scrollTo(0, y);
+  document.getElementById('hzCite').innerHTML = `${hzSrcLine()}<br>地震、海嘯：中央氣象署（官方）；國外地震：USGS；示警：國家災害防救科技中心民生示警公開資料平台（各機關 CAP）。
+    震度擴散、波前動畫的速度是示意，站臺 S 波到達秒數是推估；震度、到達時間、浪高是官方資料。`;
+  // 地圖只在選的東西換了才重畫（每分鐘的資料更新不重播動畫）
+  const key = HZ_SEG + ':' + (HZ_SEG === 'eq' ? HZ_SEL.eq : HZ_SEG === 'tsu' ? HZ_SEL.tsu + (HZ_TSU.find(v => v.no === HZ_SEL.tsu) || { last: {} }).last.id
+    : HZ_SEL.cap + ':' + HZ_CAP.map(a => a.id).join());
+  if (redraw || key !== HZ_SHOWN) {
+    const anim = redraw !== 'still' && key.split(':')[0] !== 'cap';
+    HZ_SHOWN = key;
+    if (HZ_SEG === 'eq') hzDrawEq(hzEqList().find(x => x.id === HZ_SEL.eq), anim);
+    else if (HZ_SEG === 'tsu') { const v = HZ_TSU.find(x => x.no === HZ_SEL.tsu); hzDrawTsu(v && v.last, anim); }
+    else hzDrawCap(HZ_CAP, HZ_SEL.cap);
+  }
+}
+async function hzOpen() {
+  HZ_SEEN = Date.now(); hzSave();
+  hzBadge(); hzTopBar();
+  hzEnsureMap();
+  if (HZMAP) setTimeout(() => HZMAP && HZMAP.invalidateSize(), 90);
+  await loadRegion();
+  if (REGION && !HZ_CV && HZMAP) { try { HZMAP.remove(); } catch (e) {} HZMAP = null; hzEnsureMap(); }   // 區域表晚到：重建才有上色圖層
+  HZ_SHOWN = '';
+  renderHz(true);
+  await hzRefresh(false);
+  hzSchedule();
+}
+document.getElementById('hzSeg').addEventListener('click', e => {
+  const b = e.target.closest('[data-hz]');
+  if (!b || b.dataset.hz === HZ_SEG) return;
+  HZ_SEG = b.dataset.hz; hzSave();
+  renderHz(true);
+});
+document.getElementById('hzBody').addEventListener('click', e => {
+  const r = e.target.closest('[data-eq],[data-tsu],[data-cap]');
+  if (!r) return;
+  if (r.dataset.eq) HZ_SEL.eq = r.dataset.eq;
+  else if (r.dataset.tsu) HZ_SEL.tsu = r.dataset.tsu;
+  else HZ_SEL.cap = +r.dataset.cap === HZ_SEL.cap ? -1 : +r.dataset.cap;
+  renderHz(true);
+  const m = document.getElementById('hzMap');
+  if (m && m.getBoundingClientRect().top < 0) m.scrollIntoView({ behavior: HZ_REDUCE() ? 'auto' : 'smooth', block: 'start' });
+});
+document.getElementById('hzBody').addEventListener('change', e => {
+  if (e.target.id === 'hzEqF') { HZ_EQF = e.target.value; hzSave(); renderHz(false); }
+  if (e.target.id === 'hzCapF') { HZ_CAPF = e.target.value; HZ_SEL.cap = -1; renderHz(true); }
+});
+document.getElementById('hzTop').addEventListener('click', e => {
+  const b = e.currentTarget;
+  HZ_SEG = b.dataset.go || 'eq'; hzSave();
+  go('hz');
+});
+// 開 App 幾秒後才開始抓：先讓颱風、站臺這些主要資料載完，不跟它們搶頻寬
+setTimeout(() => { loadRegion().then(() => hzRefresh(true)).then(hzSchedule); }, 4000);
 
 /* ═══ AI 系集（Weather Lab，實驗）══════════════════════════
    後端（scripts/fetch_ens.py）把 Google DeepMind／Google Research 的 AI 系集颱風路徑（50～64 組成員）
@@ -12499,6 +13473,8 @@ function go(p, auto) {
   if (p === 'rp') generate();
   if (p === 'dg') renderDg();
   if (p === 'cfg') renderSettings();
+  // 示警頁：打開才建地圖、放動畫；切走就停（動畫在背景跑很耗電）
+  if (p === 'hz') hzOpen(); else { hzStop(true); toggleHzFull(false); hzBadge(); hzTopBar(); }
   if (p === 'ty') {
     renderTyphoon({}); if (MAP) setTimeout(() => MAP.invalidateSize(), 90);
     if (!DB.cfg.guideTy && !auto) { DB.cfg.guideTy = true; save(); renderStations(); }

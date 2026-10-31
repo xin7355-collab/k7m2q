@@ -200,6 +200,9 @@ async function bootWith(page, stations, extra = {}) {
   await page.route('**/data/ecens.json', r => extra.ecens ? r.fulfill({ json: extra.ecens }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/cctv.json', r => extra.cctv ? r.fulfill({ json: extra.cctv }) : r.fulfill({ status: 404, body: '' }));
   await page.route('**/data/wfu.json', r => extra.wfu ? r.fulfill({ json: extra.wfu }) : r.fulfill({ status: 404, body: '' }));
+  await page.route('**/data/hazard.json', r => extra.hazard ? r.fulfill({ json: extra.hazard }) : r.fulfill({ status: 404, body: '' }));
+  // 外部來源的假回應（USGS、氣象署、轉發服務）要在開頁之前掛好：示警開 App 4 秒後就會去抓
+  if (extra.routes) await extra.routes(page);
   await page.addInitScript(([sts, ex]) => {
     if (window.top !== window) return;
     if (localStorage.getItem('galepost.v2')) return;
@@ -3088,5 +3091,322 @@ test('YouTube 播不了（v95）：播放器回報錯誤碼就換成我們的說
   await chip.click();
   await page.locator('#shClose').click();
   await expect(chip).not.toHaveClass(/bad/);
+  expect(errors).toEqual([]);
+});
+
+
+/* ═══ 示警（v96）：地震、海嘯、各機關示警 ═══ */
+const H_NOW = Date.now();
+const iso8 = ms => new Date(ms + 8 * 3600e3).toISOString().replace(/\.\d+Z$/, '+08:00');
+const capFmt = ms => {
+  const d = new Date(ms + 8 * 3600e3), h = d.getUTCHours(), pd = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}/${d.getUTCMonth() + 1}/${d.getUTCDate()} ${h < 12 ? '上午' : '下午'} ${pd(h % 12 || 12)}:${pd(d.getUTCMinutes())}:${pd(d.getUTCSeconds())}`;
+};
+const eqSt = (name, lat, lng, int, dist) => ({ StationName: name, StationID: name, StationLatitude: lat, StationLongitude: lng, SeismicIntensity: int,
+  ...(dist != null ? { EpicenterDistance: dist } : {}) });
+function hzQuakeA(t = H_NOW - 20 * 60e3) {
+  return { EarthquakeNo: 115080, IssueTime: iso8(t + 5 * 60e3), ReportColor: '黃色', ReportContent: '花蓮縣近海發生規模6.1有感地震',
+    Web: 'https://scweb.cwa.gov.tw/zh-tw/earthquake/details/x', ReportImageURI: 'https://scweb.cwa.gov.tw/a.png', ShakemapImageURI: 'https://scweb.cwa.gov.tw/b.png',
+    EarthquakeInfo: { OriginTime: iso8(t), FocalDepth: 15, Epicenter: { Location: '花蓮縣政府東方  12.3  公里 (位於花蓮縣近海)', EpicenterLatitude: 23.98, EpicenterLongitude: 121.73 },
+      EarthquakeMagnitude: { MagnitudeType: '芮氏規模', MagnitudeValue: 6.1 } },
+    Intensity: { ShakingArea: [
+      { AreaDesc: '花蓮縣地區', CountyName: '花蓮縣', AreaIntensity: '5弱', EqStation: [eqSt('花蓮市', 23.975, 121.613, '5弱', 12.0), eqSt('和平', 24.309, 121.749, '4級')] },
+      { AreaDesc: '宜蘭縣地區', CountyName: '宜蘭縣', AreaIntensity: '4級', EqStation: [eqSt('南澳', 24.426, 121.749, '4級'), eqSt('宜蘭市', 24.757, 121.753, '3級')] },
+      { AreaDesc: '臺北市地區', CountyName: '臺北市', AreaIntensity: '3級', EqStation: [eqSt('信義', 25.033, 121.565, '3級')] },
+      { AreaDesc: '基隆市地區', CountyName: '基隆市', AreaIntensity: '3級', EqStation: [eqSt('基隆', 25.135, 121.740, '3級')] },
+      { AreaDesc: '新北市地區', CountyName: '新北市', AreaIntensity: '2級', EqStation: [eqSt('板橋', 25.013, 121.463, '2級')] },
+      { AreaDesc: '臺東縣地區', CountyName: '臺東縣', AreaIntensity: '3級', EqStation: [eqSt('成功', 23.097, 121.373, '3級')] },
+      { AreaDesc: '最大震度4級地區', CountyName: '宜蘭縣、花蓮縣', AreaIntensity: '4級' }] } };
+}
+function hzQuakeB() {
+  const t = H_NOW - 3 * 86400e3;
+  return { _s: 1, EarthquakeNo: 115000, IssueTime: iso8(t + 4 * 60e3), ReportColor: '綠色', ReportContent: '臺灣東部海域發生規模4.5有感地震',
+    Web: 'https://scweb.cwa.gov.tw/x2', EarthquakeInfo: { OriginTime: iso8(t), FocalDepth: 33.5,
+      Epicenter: { Location: '花蓮縣政府東方  85.1  公里 (位於臺灣東部海域)', EpicenterLatitude: 23.85, EpicenterLongitude: 122.44 },
+      EarthquakeMagnitude: { MagnitudeType: '芮氏規模', MagnitudeValue: 4.5 } },
+    Intensity: { ShakingArea: [{ AreaDesc: '花蓮縣地區', CountyName: '花蓮縣', AreaIntensity: '1級', EqStation: [eqSt('太魯閣', 24.159, 121.623, '1級', 90.1)] }] } };
+}
+const TSU_EQ = { OriginTime: iso8(H_NOW - 3 * 3600e3), Source: '美國太平洋海嘯警報中心', FocalDepth: 20,
+  Epicenter: { Location: '俄羅斯 堪察加半島東部外海', EpicenterLatitude: 52.5, EpicenterLongitude: 160.3 }, EarthquakeMagnitude: { MagnitudeValue: 8.7 } };
+const tsuArea = (n, desc, color, min, h) => ({ AreaColor: color, AreaDesc: desc, AreaName: n, ArrivalTime: iso8(H_NOW + min * 60e3), InfoStatus: 'predict', WaveHeight: h });
+function hzTsu() {
+  return [
+    { IssueTime: iso8(H_NOW - 3600e3), ValidTime: { EndTime: iso8(H_NOW + 6 * 3600e3) }, ReportColor: '紅色', ReportContent: '海嘯警報：東部、東南沿海注意。',
+      ReportNo: '第2報', ReportType: '海嘯警報', TsunamiNo: 115008, Web: 'https://scweb.cwa.gov.tw/t2', EarthquakeInfo: TSU_EQ,
+      TsunamiWave: { WarningArea: [
+        tsuArea('北部沿海地區', '新北市及基隆市沿岸', '綠色', 55, '小於0.3公尺'),
+        tsuArea('東部沿海地區', '宜蘭縣南澳鄉至臺東縣長濱鄉沿岸', '黃色', 30, '0.3至1公尺'),
+        tsuArea('東南沿海地區', '臺東縣成功鎮至屏東縣滿州鄉沿岸', '紅色', 35, '1至3公尺'),
+        tsuArea('東北沿海地區', '宜蘭縣頭城鎮至蘇澳鎮沿岸', '綠色', 40, '小於0.3公尺'),
+        tsuArea('西南沿海地區', '臺南市至屏東縣恆春鎮沿岸', '黃色', 45, '0.3至1公尺'),
+        tsuArea('海峽沿海地區', '桃園市至嘉義縣沿岸，以及澎湖縣、金門縣與連江縣等離島區域', '綠色', 70, '小於0.3公尺')],
+        TsuStation: [{ ArrivalTime: iso8(H_NOW - 10 * 60e3), InfoStatus: 'observe', StationID: 'LY', StationName: '蘭嶼', StationLatitude: 22.06, StationLongitude: 121.5, WaveHeight: '12公分' },
+          { ArrivalTime: iso8(H_NOW - 5 * 60e3), InfoStatus: 'observe', StationID: 'X', StationName: '臺中港', StationLatitude: 0, StationLongitude: 0, WaveHeight: '5公分' }] } },
+    { IssueTime: iso8(H_NOW - 2 * 3600e3), ValidTime: { EndTime: iso8(H_NOW + 5 * 3600e3) }, ReportColor: '黃色', ReportContent: '海嘯消息：監視中。',
+      ReportNo: '第1報', ReportType: '海嘯消息', TsunamiNo: 115008, Web: 'https://scweb.cwa.gov.tw/t1', EarthquakeInfo: TSU_EQ },
+    { IssueTime: iso8(H_NOW - 10 * 86400e3), ValidTime: { EndTime: iso8(H_NOW - 10 * 86400e3 + 8 * 3600e3) }, ReportColor: '綠色', ReportContent: '確認解除太平洋地區的海嘯威脅。',
+      ReportNo: '第2報', ReportType: '海嘯消息', TsunamiNo: 115007, Web: 'https://scweb.cwa.gov.tw/t0',
+      EarthquakeInfo: { OriginTime: iso8(H_NOW - 10 * 86400e3 - 3600e3), FocalDepth: 10, Epicenter: { Location: '大洋洲 萬那杜群島', EpicenterLatitude: -13.8, EpicenterLongitude: 165.7 },
+        EarthquakeMagnitude: { MagnitudeValue: 6.9 } } },
+  ];
+}
+const capE = (id, cat, author, text, msg, upd, exp) => ({ id, title: cat, updated: iso8(upd), author, link: 'https://alerts.ncdr.nat.gov.tw/x.cap',
+  summary: text, category: cat, msgType: msg, effective: capFmt(upd), expires: capFmt(exp) });
+function hzCapEntries() {
+  const h = 3600e3;
+  return [
+    capE('WRA_R_2', '水庫放流', '水利署', '水利署訊寶山第二水庫:(洩洪至石井溪):自由溢流,影響範圍:新竹縣，寶山鄉、峨眉鄉；新竹市，東區、北區、香山區', 'Update', H_NOW - 0.5 * h, H_NOW + 2 * h),
+    capE('WRA_R_1', '水庫放流', '水利署', '水利署訊寶山第二水庫:(洩洪至石井溪):自由溢流,影響範圍:新竹縣，寶山鄉', 'Update', H_NOW - 1.5 * h, H_NOW + h),
+    capE('CWA_W_2', '強風', '中央氣象署', '東北風偏強，桃園市、屏東縣、臺東縣(含蘭嶼)、澎湖縣局部地區有平均風6級以上或陣風8級以上發生的機率。', 'Update', H_NOW - h, H_NOW + 12 * h),
+    capE('CWA_W_1', '強風', '中央氣象署', '東北風偏強，桃園市局部地區有平均風6級以上。', 'Alert', H_NOW - 7 * h, H_NOW + 10 * h),
+    capE('THB_1', '道路封閉', '交通部公路局', '高雄市桃源區-臺東縣海端鄉 台20線 0K~44K 預警性封閉。', 'Cancel', H_NOW - 2 * h, H_NOW + h),
+    capE('WRA_FS_1', '淹水感測', '水利署', '10/31 09:03 水利署訊: 站前南路彎道處 (感測器 羅東鎮_站前南路彎道處測站)已達黃燈警戒，淹水深度已達10公分以上。', 'Alert', H_NOW - 0.2 * h, H_NOW + h),
+    capE('WRA_F_1', '淹水', '水利署', '水利署訊國一N039K站淹水警戒 (桃園市龜山區)', 'Alert', H_NOW - 5 * h, H_NOW - h),
+    capE('ARD_1', '土石流及大規模崩塌', '農業部農村發展及水土保持署', '基隆市發布土石流黃色警戒，請注意。', 'Alert', H_NOW - 0.3 * h, H_NOW + 3 * h),
+    capE('WRA_WL_1', '河川高水位', '水利署', '水利署訊: 尖山大橋 水位站，已無高水位警戒，請持續關注河川水位即時資訊。', 'Alert', H_NOW - 0.1 * h, H_NOW + 3 * h),
+  ];
+}
+function hazardFile(o = {}) {
+  return { v: 1, updated: iso8(H_NOW - 30 * 60e3), hasKey: true, eq: o.eq || [hzQuakeA(), hzQuakeB()], tsu: o.tsu || hzTsu(),
+    cap: { fetched: iso8(H_NOW - 30 * 60e3), entries: o.cap || hzCapEntries() }, err: {}, cite: '' };
+}
+const usgsF = (id, t, lat, lng, mag, place) => ({ type: 'Feature', id, properties: { mag, place, time: t, url: 'https://earthquake.usgs.gov/' + id, tsunami: 0, type: 'earthquake', magType: 'mww' },
+  geometry: { type: 'Point', coordinates: [lng, lat, 20] } });
+async function goHz(page) {
+  await page.locator('.nav button[data-p="hz"]').click();
+  await expect(page.locator('#p-hz')).toHaveClass(/on/);
+}
+
+test('示警解析（v96）：震度字串、CAP 的上午下午時間、示警文字找鄉鎮、海嘯分區對海岸鄉鎮、經度太平洋置中', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL]);
+  await page.waitForFunction(() => typeof loadRegion === 'function');
+  const r = await page.evaluate(async () => {
+    await loadRegion();
+    const names = ks => ks.map(k => REGION.d.towns[k].join('')).sort();
+    return {
+      lv: ['1級', '4級', '5弱', '5強', '6弱', '6強', '7級', '7', '亂寫'].map(intLv),
+      t1: new Date(capTime('2026/10/31 下午 02:29:00')).toISOString(),
+      t2: new Date(capTime('2026/10/31 上午 12:05:00')).toISOString(),
+      t3: new Date(capTime('2026/10/31 下午 12:30:00')).toISOString(),
+      res: names(hzTownsOf('水利署訊寶山第二水庫:影響範圍:新竹縣，寶山鄉、峨眉鄉；新竹市，東區、北區、香山區')),
+      wind: hzTownsOf('桃園市、臺東縣(含蘭嶼)局部地區').length,
+      flood: names(hzTownsOf('感測器 羅東鎮_站前南路彎道處測站')),
+      dup: hzTownsOf('東區淹水').length,
+      tsu: [tsuAreaOf('台東縣', '長濱鄉'), tsuAreaOf('台東縣', '成功鎮'), tsuAreaOf('屏東縣', '滿州鄉'), tsuAreaOf('屏東縣', '恆春鎮'),
+        tsuAreaOf('宜蘭縣', '南澳鄉'), tsuAreaOf('宜蘭縣', '頭城鎮'), tsuAreaOf('澎湖縣', '馬公市'), tsuAreaOf('基隆市', '中正區')],
+      lng: [hzLng(121.5), hzLng(-80.8), hzLng(279.2), hzLng(-10)],
+      reg: [regionOf(23.98, 121.64), regionIdx(23.98, 121.64) >= 0],
+    };
+  });
+  expect(r.lv).toEqual([1, 4, 5, 6, 7, 8, 9, 9, -1]);
+  expect(r.t1).toBe('2026-10-31T06:29:00.000Z');          // 臺灣下午 2:29 ＝ UTC 06:29
+  expect(r.t2).toBe('2026-10-30T16:05:00.000Z');          // 上午 12 點是半夜
+  expect(r.t3).toBe('2026-10-31T04:30:00.000Z');          // 下午 12 點是中午
+  expect(r.res).toEqual(['新竹市北區', '新竹市東區', '新竹市香山區', '新竹縣寶山鄉', '新竹縣峨眉鄉'].sort());
+  expect(r.wind).toBeGreaterThan(20);                      // 「臺東縣(含蘭嶼)」沒寫鄉鎮全名：整個縣市＋桃園市全部
+  expect(r.flood).toEqual(['宜蘭縣羅東鎮']);                  // 沒寫縣市、但全臺只有一個羅東鎮
+  expect(r.dup).toBe(0);                                   // 「東區」到處都有：不猜
+  expect(r.tsu).toEqual(['東部沿海地區', '東南沿海地區', '東南沿海地區', '西南沿海地區', '東部沿海地區', '東北沿海地區', '海峽沿海地區', '北部沿海地區']);
+  expect(r.lng).toEqual([121.5, 279.2, 279.2, -10]);
+  expect(r.reg).toEqual([['花蓮縣', '花蓮市'], true]);      // v2 區域表：海岸補的格子照樣查得到
+  expect(errors).toEqual([]);
+});
+
+test('示警・地震（v96）：官方規模與各縣市震度、我的站臺最近測站實測與 S 波推估、地圖震央、測站被 S 波掃到才出現、鄉鎮上色', async ({ page }) => {
+  const errors = await bootWith(page, [{ ...KEEL, name: '基隆測試站' }, { id: 'h1', name: '花蓮測試站', type: 't1', status: 'on', hum: null, note: '', lat: 23.99, lng: 121.6 }],
+    { hazard: hazardFile() });
+  await goHz(page);
+  const card = page.locator('#hzBody .hz-card');
+  await expect(card).toContainText('M6.1');
+  await expect(card).toContainText('花蓮縣近海');
+  await expect(card.locator('.hz-h .hz-int')).toHaveText('5弱');
+  await expect(card.locator('.hz-ar').first()).toContainText('花蓮縣5弱');
+  await expect(card.locator('.hz-ar', { hasText: '台北市' })).toContainText('3級');          // 臺→台 統一
+  // 我的站臺：花蓮測試站最近的測站是花蓮市（5弱，實測）；S 波秒數標推估
+  const me = card.locator('.hz-me').first();
+  await expect(me).toContainText('花蓮測試站');
+  await expect(me).toContainText('5弱');
+  await expect(me).toContainText('實測｜花蓮市測站');
+  await expect(me.locator('.hz-est')).toContainText('（推估）');
+  await expect(card.locator('.hz-me', { hasText: '基隆測試站' })).toContainText('實測｜基隆測站');
+  // 地圖：震央、八個測站（重複的不重畫）
+  await expect(page.locator('#hzMap .hz-epi')).toHaveCount(1);
+  await expect(page.locator('#hzMap .hz-st')).toHaveCount(8);
+  // 動畫：停在震後 6 秒（深 15 km、S 波 3.5 km/s → 地表半徑約 15 km），只有 S 波已經掃到的測站（花蓮市 12 km）出現；播完全部出現
+  const mid = await page.evaluate(() => {
+    if (!HZ_AN) return null;
+    cancelAnimationFrame(HZ_AN.raf);
+    const a = HZ_AN; HZ_AN = null;
+    a.frame(6, false);
+    const on = [...document.querySelectorAll('#hzMap .hz-st.on')].map(x => x.textContent);
+    const hud = document.getElementById('hzHud').textContent;
+    a.frame(a.end, true);
+    return { on, hud };
+  });
+  expect(mid).not.toBeNull();
+  expect(mid.on).toEqual(['5-']);
+  expect(mid.hud).toContain('震後 6 秒');
+  expect(mid.hud).toContain('示意');
+  await expect(page.locator('#hzMap .hz-st.on')).toHaveCount(8);
+  await expect(page.locator('#hzHud')).toContainText('重播');
+  // 鄉鎮上色：花蓮市（有測站 5弱）塗深色，同縣市沒測站的鄉鎮塗淺色，沒報震度的縣市不塗
+  const px = await page.evaluate(() => {
+    const G = hzGrid(), d = REGION.d, cv = HZ_CV.getContext('2d');
+    const at = (lat, lng) => {
+      let r = 0; while (r < G.H - 1 && G.rowLat[r] > lat) r++;
+      return [...cv.getImageData(Math.floor((lng - d.lng0) / d.d), r, 1, 1).data];
+    };
+    return { hl: at(23.98, 121.6), hlSouth: at(23.32, 121.31), tn: at(23.0, 120.2) };
+  });
+  expect(px.hl[3]).toBeGreaterThan(140);                  // 深（0.6）
+  expect(px.hlSouth[3]).toBeGreaterThan(30);               // 淺（0.2）
+  expect(px.hlSouth[3]).toBeLessThan(80);
+  expect(px.tn[3]).toBe(0);                                // 臺南沒有報震度
+  // 清單：點上一個地震就換過去
+  await page.locator('#hzBody .hz-row', { hasText: 'M4.5' }).click();
+  await expect(card).toContainText('M4.5');
+  await expect(card).toContainText('小區域有感地震');
+  await expect(page.locator('#hzMap .hz-st')).toHaveCount(1);
+  await expect(page.locator('#hzCite')).toContainText('氣象署：後端');
+  await expect(page.locator('#hzCite')).toContainText('示意');
+  expect(errors).toEqual([]);
+});
+
+test('示警・海嘯（v96）：生效中的警報置頂、沿海分區依到達時間排、倒數、潮位站實測；海岸上色；別頁上方提示條與導覽紅點', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { hazard: hazardFile({ eq: [hzQuakeB()] }) });
+  // 還沒打開示警頁：導覽紅點、各頁上方的提示條（海嘯警報）
+  await expect(page.locator('#navDotHz')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#hzTop')).toBeVisible();
+  await expect(page.locator('#hzTop')).toContainText('海嘯警報');
+  await expect(page.locator('#hzTop')).toContainText('堪察加');
+  await page.locator('#hzTop').click();
+  await expect(page.locator('#p-hz')).toHaveClass(/on/);
+  await expect(page.locator('#hzSeg button[data-hz="tsu"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#navDotHz')).toBeHidden();
+  await expect(page.locator('#hzTop')).toBeHidden();
+  const card = page.locator('#hzBody .hz-tsu');
+  await expect(card).toContainText('海嘯警報');
+  await expect(card).toContainText('第 2 報');
+  await expect(card).toHaveClass(/l3/);
+  const rows = card.locator('table').first().locator('tbody tr');
+  await expect(rows).toHaveCount(6);
+  await expect(rows.first()).toContainText('東部沿海地區');          // 最早到的排最前
+  await expect(rows.first()).toContainText('還有');
+  await expect(card).toContainText('潮位站（實測）');
+  await expect(card).toContainText('12公分');
+  await expect(page.locator('#hzMap .hz-tide')).toHaveCount(1);       // 臺中港座標是 0,0：只列表不畫
+  await expect(page.locator('#hzBody details')).toContainText('這個事件的各報（2）');
+  // 海岸上色：停掉動畫直接看結果——東南沿海（紅）、基隆外海（北部，綠）
+  const px = await page.evaluate(() => {
+    hzStop(true);
+    const G = hzGrid(), d = REGION.d, cv = HZ_CV.getContext('2d');
+    const at = (lat, lng) => { let r = 0; while (r < G.H - 1 && G.rowLat[r] > lat) r++; return [...cv.getImageData(Math.floor((lng - d.lng0) / d.d), r, 1, 1).data]; };
+    const c = HZMAP.getCenter();
+    return { se: at(22.75, 121.18), n: at(25.17, 121.75), land: at(23.0, 121.2), c: [c.lat, c.lng] };
+  });
+  // 遠地海嘯：播完拉回臺灣（海岸上色在整個太平洋的比例尺下看不到）
+  expect(px.c[0]).toBeGreaterThan(22); expect(px.c[0]).toBeLessThan(25);
+  expect(px.c[1]).toBeGreaterThan(119.5); expect(px.c[1]).toBeLessThan(122);
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 2);     // 半透明的顏色存進畫布會差 1
+  expect(near(px.se.slice(0, 3), [255, 82, 71])).toBe(true);            // 紅色燈號
+  expect(near(px.n.slice(0, 3), [79, 211, 154])).toBe(true);            // 綠色燈號
+  expect(px.land[3]).toBe(0);                                         // 陸地不塗
+  // 舊事件（已解除）在清單裡、點了換過去
+  await page.locator('#hzBody .hz-row', { hasText: '萬那杜' }).click();
+  await expect(page.locator('#hzBody .hz-tsu')).not.toHaveClass(/l3/);
+  await expect(page.locator('#hzBody .hz-tsu')).toContainText('解除');
+  expect(errors).toEqual([]);
+});
+
+test('示警・各機關（v96）：只列生效中的（已解除、已過期、被新一則取代的不列）、照重要性排、找出鄉鎮上地圖、影響我的站臺可篩', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL], { hazard: hazardFile() });
+  await goHz(page);
+  await page.locator('#hzSeg button[data-hz="cap"]').click();
+  const items = page.locator('#hzBody .hz-cap');
+  await expect(items).toHaveCount(4);
+  await expect(items.nth(0).locator('.hz-cat')).toHaveText('土石流及大規模崩塌');
+  await expect(items.nth(1).locator('.hz-cat')).toHaveText('淹水感測');
+  await expect(items.nth(2).locator('.hz-cat')).toHaveText('強風');
+  await expect(items.nth(3).locator('.hz-cat')).toHaveText('水庫放流');
+  await expect(items.nth(2)).toContainText('屏東縣');               // 強風取最新那一則
+  await expect(items.nth(3)).toContainText('峨眉鄉');               // 水庫取最新那一則
+  await expect(page.locator('#hzSeg [data-n="cap"]')).toHaveText('4');
+  await expect(items.nth(0).locator('.hz-me-t')).toHaveText('影響我的站臺');
+  await page.locator('#hzCapF').selectOption('mine');
+  await expect(items).toHaveCount(1);
+  await page.locator('#hzCapF').selectOption('');
+  // 點一則：地圖框到那幾個鄉鎮
+  await items.nth(3).click();
+  await expect(items.nth(3)).toHaveAttribute('aria-current', 'true');
+  const b = await page.evaluate(() => { const c = HZMAP.getCenter(); return [c.lat, c.lng, HZMAP.getZoom()]; });
+  expect(b[0]).toBeGreaterThan(24.6); expect(b[0]).toBeLessThan(24.9);
+  expect(b[1]).toBeGreaterThan(120.8); expect(b[1]).toBeLessThan(121.1);
+  expect(b[2]).toBeGreaterThanOrEqual(9);
+  await expect(page.locator('#hzCite')).toContainText('示警：後端');
+  expect(errors).toEqual([]);
+});
+
+test('示警・即時（v96）：USGS 跟氣象署同一個地震只列一筆、氣象署沒報的臺灣附近照列、國外大地震要選才列；填授權碼直連氣象署；示警經轉發即時抓', async ({ page }) => {
+  const cwaHits = [];
+  const quakeC = hzQuakeA(H_NOW - 4 * 60e3);
+  quakeC.EarthquakeInfo.Epicenter = { Location: '宜蘭縣政府東方  20  公里 (位於宜蘭縣近海)', EpicenterLatitude: 24.75, EpicenterLongitude: 122.0 };
+  quakeC.EarthquakeInfo.EarthquakeMagnitude.MagnitudeValue = 5.4;
+  const errors = await bootWith(page, [KEEL], {
+    cfg: { cwaKey: 'CWA-TEST-KEY' },
+    hazard: hazardFile({ eq: [hzQuakeB()], tsu: [], cap: [] }),
+    routes: async p => {
+      await p.route('https://earthquake.usgs.gov/**', r => r.fulfill({ json: { type: 'FeatureCollection', features: [
+        usgsF('us1', H_NOW - 4 * 60e3 + 15e3, 24.77, 122.03, 5.6, '30 km E of Yilan, Taiwan'),
+        usgsF('us2', H_NOW - 60 * 60e3, 22.4, 121.6, 4.6, '60 km SE of Taitung City, Taiwan'),
+        usgsF('us3', H_NOW - 5 * 3600e3, -33.2, -72.1, 6.8, 'offshore Valparaiso, Chile'),
+        usgsF('us4', H_NOW - 2 * 3600e3, 36.1, 140.1, 4.8, 'Ibaraki, Japan')] } }));
+      await p.route('https://opendata.cwa.gov.tw/**', r => {
+        const u = new URL(r.request().url());
+        cwaHits.push(u.pathname.split('/').pop() + '?limit=' + u.searchParams.get('limit'));
+        const ds = u.pathname.split('/').pop();
+        r.fulfill({ json: { records: ds === 'E-A0015-001' ? { Earthquake: [quakeC] } : ds === 'E-A0016-001' ? { Earthquake: [] } : { Tsunami: [] } },
+          headers: { 'access-control-allow-origin': '*' } });
+      });
+      await p.route('https://proxy.aliceric27.workers.dev/**', r => r.fulfill({ headers: { 'access-control-allow-origin': '*' },
+        json: { id: 'x', entry: hzCapEntries().map(e => ({ id: e.id, title: e.title, updated: e.updated, author: { name: e.author },
+          link: { '@rel': 'alternate', '@href': e.link }, summary: { '@type': 'html', '#text': e.summary }, category: { '@term': e.category },
+          status: 'Actual', msgType: e.msgType, effective: e.effective, expires: e.expires })) } }));
+    },
+  });
+  await goHz(page);
+  const card = page.locator('#hzBody .hz-card');
+  await expect(card).toContainText('M5.4', { timeout: 15000 });     // 氣象署直連拿到的新報告
+  await expect(card).toContainText('宜蘭縣近海');
+  await expect(card.locator('a', { hasText: 'USGS' })).toHaveAttribute('href', 'https://earthquake.usgs.gov/us1');   // 同一個地震：只掛連結
+  expect(cwaHits).toEqual(expect.arrayContaining(['E-A0015-001?limit=6', 'E-A0016-001?limit=6', 'E-A0014-001?limit=8']));
+  const rows = page.locator('#hzBody .hz-row');
+  await expect(rows).toHaveCount(3);                                 // 氣象署 2 筆＋USGS 臺東外海（日本 4.8、智利沒選）
+  await expect(rows.nth(1)).toContainText('USGS');
+  await rows.nth(1).click();
+  await expect(card).toContainText('美國地質調查所');
+  await expect(card.locator('.hz-h .hz-int')).toHaveText('無震度');
+  await page.locator('#hzEqF').selectOption('all');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.filter({ hasText: 'Chile' })).toHaveCount(1);
+  await expect(page.locator('#hzCite')).toContainText('氣象署：即時（你的授權碼）');
+  await expect(page.locator('#hzCite')).toContainText('USGS：');
+  await expect(page.locator('#hzCite')).toContainText('示警：即時（經轉發服務）');
+  await page.locator('#hzSeg button[data-hz="cap"]').click();
+  await expect(page.locator('#hzBody .hz-cap')).toHaveCount(4);
+  expect(errors).toEqual([]);
+});
+
+test('示警・沒資料（v96）：後端還沒產生、外部全擋：不報錯、寫出每個來源為什麼沒有、清單照樣能用', async ({ page }) => {
+  const errors = await bootWith(page, [KEEL]);
+  await goHz(page);
+  await expect(page.locator('#hzCite')).toContainText('USGS 抓不到', { timeout: 15000 });
+  await expect(page.locator('#hzCite')).toContainText('示警抓不到');
+  await expect(page.locator('#hzCite')).toContainText('後端還沒產生');
+  await expect(page.locator('#hzBody')).toContainText('最近 45 天沒有地震資料');
+  await page.locator('#hzSeg button[data-hz="tsu"]').click();
+  await expect(page.locator('#hzBody')).toContainText('目前沒有海嘯警報、警訊');
+  await page.locator('#hzSeg button[data-hz="cap"]').click();
+  await expect(page.locator('#hzBody')).toContainText('示警清單還沒拿到');
+  await expect(page.locator('#navDotHz')).toBeHidden();
   expect(errors).toEqual([]);
 });

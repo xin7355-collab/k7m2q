@@ -19,6 +19,9 @@ g0v twgeojson 的 twTown1982.topo.json（內政部鄉鎮界線，簡化過；檔
 格子中心落在哪個鄉鎮的多邊形就記那個鄉鎮；海上的格子離陸地 5 格（約 2.5 公里）內的，記最近的鄉鎮
 （港口、海堤、跨海大橋上的監視器座標常落在海上一點點）。每一列用「長度、編號」交替的連續編碼存。
 
+**v2（2026-10-31）**：補上去的海上格子改存成 -(編號+2)（-1 仍是遠海）。查「在哪個鄉鎮」照樣算得到，
+但「示警」頁把震度、示警範圍塗在地圖上時只塗真正的陸地——不然每個鄉鎮都多一圈 2.5 公里的海。
+
 重產：python3 scripts/build_region.py build
 離線自我測試：python3 scripts/build_region.py selftest
 """
@@ -95,6 +98,7 @@ def inside(rings, x, y):
 
 
 def build_grid(feats, lat0=LAT0, lng0=LNG0, d=D, ny=NY, nx=NX, fill=COAST_FILL):
+    """→ (鄉鎮名稱表, 格網)。格網值：≥0 陸地上的鄉鎮編號、≤-2 靠岸海上補的（-(編號+2)）、-1 遠海。"""
     names, idx = [], {}
     shapes = []
     for county, town, rings in feats:
@@ -134,7 +138,7 @@ def build_grid(feats, lat0=LAT0, lng0=LNG0, d=D, ny=NY, nx=NX, fill=COAST_FILL):
                     if best:
                         break
                 if best:
-                    grid[j][i] = best[1]
+                    grid[j][i] = -(best[1] + 2)
     return names, grid
 
 
@@ -162,7 +166,15 @@ def lookup(doc, lat, lng):
     if not (0 <= j < doc["ny"] and 0 <= i < doc["nx"]):
         return None
     k = unrle(doc["rows"][j])[i]
+    if k <= -2:
+        k = -k - 2                                   # 靠岸海上補的，查詢時當成那個鄉鎮
     return doc["towns"][k] if k >= 0 else None
+
+
+def is_land(doc, lat, lng):
+    j = int((lat - doc["lat0"]) / doc["d"])
+    i = int((lng - doc["lng0"]) / doc["d"])
+    return 0 <= j < doc["ny"] and 0 <= i < doc["nx"] and unrle(doc["rows"][j])[i] >= 0
 
 
 def build():
@@ -170,7 +182,7 @@ def build():
         topo = json.loads(r.read())
     feats = decode_topology(topo)
     names, grid = build_grid(feats)
-    doc = {"v": 1, "lat0": LAT0, "lng0": LNG0, "d": D, "ny": NY, "nx": NX, "towns": names,
+    doc = {"v": 2, "lat0": LAT0, "lng0": LNG0, "d": D, "ny": NY, "nx": NX, "towns": names,
            "rows": [rle(r) for r in grid],
            "cite": "鄉鎮界線：內政部（g0v twgeojson 簡化版）"}
     # 幾個已知點對一下，名稱換錯或格網偏了直接停，不要寫出錯的表
@@ -223,6 +235,7 @@ def selftest():
     names, grid = build_grid(feats, lat0=22.90, lng0=119.98, d=0.01, ny=24, nx=26, fill=2)
     doc = {"lat0": 22.90, "lng0": 119.98, "d": 0.01, "ny": 24, "nx": 26, "towns": names, "rows": [rle(r) for r in grid]}
     check(lookup(doc, 22.995, 120.05) == ["新北市", "板橋區"], "海上靠岸 2 格內補最近的鄉鎮（海堤、港口上的監視器）")
+    check(not is_land(doc, 22.995, 120.05) and is_land(doc, 23.05, 120.05), "補上去的海上格子標成「不是陸地」，地圖上色時不塗")
     check(lookup(doc, 22.905, 120.05) is None, "離岸超過 2 格不補")
     check(lookup(doc, 30, 120) is None, "格網外回 None")
     row = [-1, -1, 3, 3, 3, -1, 5]
@@ -231,6 +244,9 @@ def selftest():
         doc = json.load(open(OUT, encoding="utf-8"))
         check(lookup(doc, 25.0330, 121.5654) == ["台北市", "信義區"] and lookup(doc, 22.6260, 120.3600) == ["高雄市", "鳳山區"],
               "現有的 assets/region.json：台北 101 在信義區、鳳山在高雄市鳳山區")
+        check(doc.get("v") == 2 and is_land(doc, 25.0330, 121.5654) and not is_land(doc, 23.98, 121.64)
+              and lookup(doc, 23.98, 121.64) == ["花蓮縣", "花蓮市"],
+              "現有的 assets/region.json 是 v2：陸地是陸地；花蓮外海補的格子查得到花蓮市、但不算陸地")
     print(f"全部通過（{okn} 項）")
     return 0
 

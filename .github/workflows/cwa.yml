@@ -1,6 +1,7 @@
 # 氣象署資料的後端管線：落雷（data/lightning.json）＋颱風路徑與警報單（data/typhoon.json）
 # ＋人事行政總處停班停課公告（data/dgpa.json，官方頁沒有 CORS、前端的第三方代理會掛，後端直接抓）
-# ＋雨量站、測站陣風、豪大雨雷雨特報（data/wx.json）＋AI 系集 8／10 級風機率（data/ens.json）＋ECMWF 系集颱風路徑（data/ecens.json）。
+# ＋雨量站、測站陣風、豪大雨雷雨特報（data/wx.json）＋AI 系集 8／10 級風機率（data/ens.json）＋ECMWF 系集颱風路徑（data/ecens.json）
+# ＋地震報告、海嘯資訊、民生示警（data/hazard.json）。
 #
 # 兩支放同一個工作流程、同一個 commit：分開兩支的話會同時推同一條分支，
 # 後推的那支會因為不是 fast-forward 被拒，資料就白抓了。
@@ -83,6 +84,7 @@ jobs:
           python scripts/fetch_gate.py selftest
           python scripts/fetch_ens.py selftest
           python scripts/fetch_ecens.py selftest
+          python scripts/fetch_hazard.py selftest
 
       - name: Fetch
         if: steps.gate.outputs.run == '1'
@@ -124,6 +126,14 @@ jobs:
         run: |
           python -m pip install --quiet --disable-pip-version-check eccodes==2.50.0
           python scripts/fetch_ecens.py
+
+      # 地震報告、海嘯資訊（氣象署）＋民生示警（國家災防中心 CAP）→ data/hazard.json，給「示警」頁沒填授權碼的同事。
+      # 示警不用金鑰；授權碼被拒才紅燈（示警照樣寫出），一段抓不到只沿用上一份並記原因
+      - name: Fetch hazards
+        if: always() && steps.gate.outputs.run == '1'
+        env:
+          CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
+        run: python scripts/fetch_hazard.py
 
       # 內容沒變就不要 commit —— 沒有雷的日子不該每十分鐘產生一次提交，
       # 每一次提交都會觸發一輪 Pages 重新部署。

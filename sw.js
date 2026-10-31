@@ -9,7 +9,7 @@
  * 這裡刻意不做 retry:Service Worker 只是轉手,重試由頁面端的 getJSON 負責
  * （429／5xx 退避）。兩層都重試的話,一次失敗會被放大成好幾倍的請求。
  */
-const CACHE = 'galepost-v95';
+const CACHE = 'galepost-v96';
 const SHELL = [
   './',
   './index.html',
@@ -64,9 +64,13 @@ self.addEventListener('fetch', e => {
   // 而且離線時看舊的雷達回波本來就沒有意義。
   if (/(^|\.)cwa\.gov\.tw$/.test(url.hostname) ||
       /(^|\.)gdacs\.org$/.test(url.hostname) ||
-      /(^|\.)windy\.com$/.test(url.hostname)) {
+      /(^|\.)windy\.com$/.test(url.hostname) ||
+      // 地震：幾分鐘前的清單拿快取讀，會漏掉剛發生的那一個
+      /(^|\.)usgs\.gov$/.test(url.hostname)) {
     return;
   }
+  // 民生示警走轉發服務，官方網址在 query string 裡；過期的示警（已解除的放流、已開放的道路）比沒有更糟
+  if (/ncdr\.nat\.gov\.tw/.test(req.url)) return;
 
   /* 停班停課公告同理 —— 而且更嚴重:昨天的公告寫著「明天停止上班」,
      今天拿快取讀到那一行,會直接讀成今天放假。
@@ -87,9 +91,10 @@ self.addEventListener('fetch', e => {
      停班停課的後端檔也是:走下面「快取優先」的話,按「更新」拿到的永遠是上一份,
      使用者看到的就是「更新壞掉了」。畫面上標的是檔案裡的抓取時間,讀到快取也看得出多舊。
      AI 系集（ens）也一樣：畫面標的是起報時間與「已 N 小時」。
-     景點海象清單（wfu）：YouTube 直播重開就換影片 ID，拿舊清單點下去會是「影片無法播放」。 */
+     景點海象清單（wfu）：YouTube 直播重開就換影片 ID，拿舊清單點下去會是「影片無法播放」。
+     示警（hazard）：地震、海嘯、各機關示警，畫面標的是檔案裡的抓取時間。 */
   if (url.origin === location.origin
-      && /\/data\/(typhoon|lightning|dgpa|wx|ens|ecens|wfu)\.json$/.test(url.pathname)) {
+      && /\/data\/(typhoon|lightning|dgpa|wx|ens|ecens|wfu|hazard)\.json$/.test(url.pathname)) {
     e.respondWith(
       fetch(req)
         .then(res => {

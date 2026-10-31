@@ -81,7 +81,11 @@
   給「即時影像 › 景點海象」：YouTube 官方嵌入／政府截圖輪播；沒有座標所以照縣市分組；畫面標「清單整理：WFU」並連回原文。
   已結束的直播：有 `YT_API_KEY` 就照頻道現正直播的標題換新 ID，沒有就標「已結束」連到頻道 /streams；禁止嵌入的 YouTube 管不了，只能外連）、
   `scripts/build_region.py` → `assets/region.json`（鄉鎮界線轉 0.005° 格網，前端離線查座標在哪個縣市鄉鎮，給即時影像搜尋的區域篩選；
-  `python3 scripts/build_region.py build` 重產；即時影像打不開的記在本機 3 天 `galepost.camstat`，清單與地圖標紅並寫原因）、
+  v2 起靠岸海上補的格子存 -(編號+2)：查詢照算、示警地圖只塗陸地；`python3 scripts/build_region.py build` 重產；
+  即時影像打不開的記在本機 3 天 `galepost.camstat`，清單與地圖標紅並寫原因）、
+  `scripts/fetch_hazard.py`（同一個 cwa.yml，氣象署地震報告 E-A0015／16、海嘯 E-A0014＋國家災防中心民生示警 CAP 寫 `data/hazard.json`，
+  給底部「示警」頁：前端有個人授權碼就直連氣象署（有 CORS）、USGS 免金鑰直連、示警試轉發服務，抓不到才用後端這份。
+  震度擴散、海嘯波前是示意速度，震度／到達時間／浪高是官方，畫面分開標）、
   `scripts/build_tyhist.py` + `.github/workflows/tyhist.yml`（每週從 IBTrACS 建 `data/tyhist.json`，名牌的「今年／歷史第幾強」）、
   `assets/coast.json`（戰情圖離線海岸線，`python3 scripts/build_coast.py build` 重產）、
   `e2e/`（Playwright 測試，`npm test`）。每輪做了什麼寫在 commit 內文（`git log`），不另放紀錄檔。

@@ -70,6 +70,7 @@ jobs:
           python3 scripts/fetch_ecens.py selftest
           python3 scripts/fetch_cctv.py selftest
           python3 scripts/fetch_wfu.py selftest
+          python3 scripts/fetch_hazard.py selftest
 
       - run: npx playwright test
 
